@@ -4,10 +4,10 @@ import time
 
 def main():
     # Path to the config file
-    config_file = "config.json"
+    config_file = "examples/config.json"
 
     # Initialize the DB instance
-    db = DB(config_file)
+    db = DB(config_file=config_file)
 
     # ================================
     # Local Backend Operations
@@ -24,7 +24,7 @@ def main():
     print("Queued write to Local backend enqueued.")
 
     # Using Tether Decorator
-    @db.tether(bucket="local_logs", wait=True, backend="local")
+    @db.tether(bucket="local_logs", queue=True, backend="local")
     def local_tether_example():
         return {"key": "local_tether_key", "value": "local_tethered_data"}
 
@@ -54,7 +54,7 @@ def main():
     print("Queued write to DynamoDB backend enqueued.")
 
     # Using Tether Decorator
-    @db.tether(bucket="dynamo_logs", wait=False, backend="dynamodb")
+    @db.tether(bucket="dynamo_logs", queue=False, backend="dynamodb")
     def dynamo_tether_example():
         return {"key": "dynamo_tether_key", "value": "dynamo_tethered_data"}
 
@@ -82,7 +82,7 @@ def main():
     print("Queued write to etcd backend enqueued.")
 
     # Using Tether Decorator
-    @db.tether(bucket="etcd_logs", wait=True, backend="etcd")
+    @db.tether(bucket="etcd_logs", queue=True, backend="etcd")
     def etcd_tether_example():
         return {"key": "etcd_tether_key", "value": "etcd_tethered_data"}
 

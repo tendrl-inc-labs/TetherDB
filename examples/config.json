@@ -4,13 +4,11 @@
     "filepath": "local_db.db"
   },
   "dynamodb": {
-    "table_name": "YourDynamoDBTable"
+    "table_name": "TetherTest"
   },
   "etcd": {
     "host": "localhost",
     "port": 2379,
-    "username": "root",
-    "password": "password",
     "use_ssl": false
   },
   "queue_batch": {

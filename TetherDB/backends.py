@@ -2,7 +2,7 @@ from logging import Logger
 import ssl
 
 import boto3
-import etcd3gw
+from etcd3gw.client import Etcd3Client
 
 
 class BackendInitializer:
@@ -41,7 +41,7 @@ class BackendInitializer:
     def _init_etcd(self, config: dict):
         try:
             etcd_cfg = config.get("etcd", {})
-            ssl_context = None
+            # TODO Fix this https://docs.openstack.org/etcd3gw/latest/_modules/etcd3gw/client.html#Etcd3Client
             if etcd_cfg.get("use_ssl"):
                 ssl_context = ssl.create_default_context(
                     cafile=etcd_cfg.get("ca_cert_file")
@@ -49,13 +49,10 @@ class BackendInitializer:
                 ssl_context.load_cert_chain(
                     certfile=etcd_cfg.get("cert_file"), keyfile=etcd_cfg.get("key_file")
                 )
-            self.etcd = etcd3gw.client.Etcd3Client(
+            self.etcd = Etcd3Client(
                 host=etcd_cfg["host"],
                 port=etcd_cfg["port"],
-                user=etcd_cfg.get("username"),
-                password=etcd_cfg.get("password"),
-                timeout=etcd_cfg.get("timeout", 5),
-                ssl_context=ssl_context,
+                timeout=etcd_cfg.get("timeout", 5)
             )
             self.logger.debug("etcd backend initialized.")
         except Exception as e:
