@@ -159,7 +159,6 @@ class DB:
         :param queue: If True, writes immediately; if False, queues the write.
         :param backend: Backend to write to: 'local', 'dynamodb', or 'etcd'.
         """
-
         def decorator(func):
             @wraps(func)
             def wrapper(*args, **kwargs):
@@ -169,7 +168,6 @@ class DB:
                     value = result["value"]
                     if isinstance(value, dict):
                         value = json.dumps(value)
-                    self._validate_backend(backend)
                     self.write_message(key, value, bucket, backend, not queue)
                     return True
                 else:

@@ -30,7 +30,7 @@ class BackgroundWorker:
         self.logger = logger
         self.lock = lock
         self.thread = None
-        self.is_running = False  # Proper flag for thread management
+        self.is_running = False
         self.batch_size = 10
         self.batch_timeout = 2.0
 
