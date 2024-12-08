@@ -1,24 +1,18 @@
 {
-  "debug": true,
+  "logging": "debug",
+  "queue_batch": {
+    "size": 10,
+    "timeout": 2.0
+  },
   "local": {
-    "filepath": "localdb"
+    "filepath": "local_db.db"
   },
   "dynamodb": {
-    "table_name": "MyDynamoDBTable"
+    "table_name": "example_table"
   },
   "etcd": {
     "host": "localhost",
     "port": 2379,
-    "username": "myuser",
-    "password": "mypassword",
-    "use_ssl": true,
-    "cert_file": "path/to/client-cert.pem",
-    "key_file": "path/to/client-key.pem",
-    "ca_cert_file": "path/to/ca-cert.pem",
-    "timeout": 5
-  },
-  "queue_batch": {
-    "size": 10,
-    "timeout": 2.0
+    "use_ssl": false
   }
 }

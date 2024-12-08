@@ -27,19 +27,34 @@ class DB:
         with open(config_file, "r", encoding="utf-8") as f:
             config = json.load(f)
 
-        self.debug = config.get("debug", False)
+        # Logging configuration
+        log_level = config.get("logging", "info").lower()
+        log_levels = {
+            "debug": logging.DEBUG,
+            "info": logging.INFO,
+            "none": logging.NOTSET
+        }
+        selected_level = log_levels.get(log_level, logging.INFO)
+
+        logging.basicConfig(level=selected_level, format="%(asctime)s - %(levelname)s - %(message)s")
+        self.logger = logging.getLogger(__name__)
+
+        # Check and disable logging for "none"
+        if selected_level == logging.NOTSET:
+            logging.disable(logging.CRITICAL)
+
+        self.logger.debug("Logger initialized with level: %s", log_level)
+
+        # Initialize other class attributes
+        self.debug = log_level == "debug"
         self._db_lock = threading.Lock()
         self._write_queue = Queue()
-        self._running = False  # Indicates if the worker is running
+        self._running = False
         self._worker_thread = None
 
         # Batch configuration
         self.batch_size = config.get("queue_batch", {}).get("size", 10)
         self.batch_timeout = config.get("queue_batch", {}).get("timeout", 2.0)
-
-        # Logger setup
-        logging.basicConfig(level=logging.DEBUG if self.debug else logging.INFO)
-        self.logger = logging.getLogger(__name__)
 
         # Initialize available backends
         self._initialize_backends(config)
@@ -150,6 +165,45 @@ class DB:
         except Exception as e:
             self.logger.error(f"Error processing batch: {e}")
 
+    def write_message(self, key: str, value: Union[dict, str], bucket: str = "",
+                    backend: str = "local", queue: bool = False) -> bool:
+        """
+        Write a message to the specified backend or queue it for background processing.
+
+        :param key: The key under which to store the message.
+        :param value: The message to store, as a string or dictionary.
+        :param bucket: Optional bucket or namespace prefix for the key.
+        :param backend: The backend to write to (default: 'local').
+        :param queue: If True, queue the write for background processing.
+        :return: True if the write is successful, False otherwise.
+        """
+        full_key = self._build_key(bucket, key)
+        try:
+            if isinstance(value, dict):
+                value = json.dumps(value)
+
+            if queue:
+                self._write_queue.put((full_key, value, backend))
+                self.logger.debug(f"Message queued for write: {full_key} -> {value}")
+                return True
+
+            with self._db_lock:
+                if backend == "local" and self.local_db_file is not None:
+                    with dbm.open(self.local_db_file, "c") as db:
+                        db[full_key] = value.encode("utf-8")
+                        self.logger.debug(f"Write successful to local backend: {full_key} -> {value}")
+                elif backend == "dynamodb" and self.dynamodb_table is not None:
+                    self.dynamodb_table.put_item(Item={"key": full_key, "value": value})
+                    self.logger.debug(f"Write successful to DynamoDB: {full_key}")
+                elif backend == "etcd" and self.etcd is not None:
+                    self.etcd.put(full_key, value)
+                    self.logger.debug(f"Write successful to etcd: {full_key}")
+                else:
+                    raise ValueError(f"Invalid backend or backend not initialized: {backend}")
+            return True
+        except Exception as e:
+            self.logger.error(f"Error writing message to {backend}: {e}")
+            return False
 
     def tether(self, bucket: str = "", wait: bool = True, backend: str = "local"):
         """
@@ -186,7 +240,7 @@ class DB:
                     if wait:
                         return self.write_message(key, value, bucket=bucket, backend=backend)
                     else:
-                        self.write_queue_message(key, value, bucket=bucket, backend=backend)
+                        self.write_message(key, value, bucket=bucket, backend=backend, queue=True)
                         return True
                 else:
                     self.logger.error(
@@ -195,39 +249,6 @@ class DB:
                     return False
             return wrapper
         return decorator
-
-    def write_message(self, key: str, value: Union[dict, str], bucket: str = "", backend: str = "local") -> bool:
-        """
-        Write a message to the specified backend.
-
-        :param key: The key under which to store the message.
-        :param value: The message to store, as a string or dictionary.
-        :param bucket: Optional bucket or namespace prefix for the key.
-        :param backend: The backend to write to (default: 'local').
-        :return: True if the write is successful, False otherwise.
-        """
-        full_key = self._build_key(bucket, key)
-        try:
-            if isinstance(value, dict):
-                value = json.dumps(value)
-
-            with self._db_lock:
-                if backend == "local" and self.local_db_file is not None:
-                    with dbm.open(self.local_db_file, "c") as db:
-                        db[full_key] = value.encode("utf-8")
-                        self.logger.debug(f"Write successful to local backend: {full_key} -> {value}")
-                elif backend == "dynamodb" and self.dynamodb_table is not None:
-                    self.dynamodb_table.put_item(Item={"key": full_key, "value": value})
-                    self.logger.debug(f"Write successful to DynamoDB: {full_key}")
-                elif backend == "etcd" and self.etcd is not None:
-                    self.etcd.put(full_key, value)
-                    self.logger.debug(f"Write successful to etcd: {full_key}")
-                else:
-                    raise ValueError(f"Invalid backend or backend not initialized: {backend}")
-            return True
-        except Exception as e:
-            self.logger.error(f"Error writing message to {backend}: {e}")
-            return False
 
     def _build_key(self, key: str, bucket: str = "") -> str:
         return f"{bucket}:{key}" if bucket else key
