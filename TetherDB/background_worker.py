@@ -5,7 +5,16 @@ from queue import Empty
 class BackgroundWorker:
     """Background worker to process queued writes in batches."""
 
-    __slots__ = ["queue", "process_batch", "logger", "lock", "thread", "is_running", "batch_size", "batch_timeout"]
+    __slots__ = [
+        "queue",
+        "process_batch",
+        "logger",
+        "lock",
+        "thread",
+        "is_running",
+        "batch_size",
+        "batch_timeout",
+    ]
 
     def __init__(self, queue, process_batch, logger, lock):
         """

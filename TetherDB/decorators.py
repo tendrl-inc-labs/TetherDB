@@ -2,6 +2,7 @@ import uuid
 import json
 from functools import wraps
 
+
 def tether(db_instance, bucket: str = "", wait: bool = True, backend: str = "local"):
     """
     A decorator to write the return value of a function to the database.
@@ -15,6 +16,7 @@ def tether(db_instance, bucket: str = "", wait: bool = True, backend: str = "loc
     :param wait: If True, writes immediately; if False, queues the write.
     :param backend: Backend to write to: 'local', 'dynamodb', or 'etcd'.
     """
+
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -30,5 +32,7 @@ def tether(db_instance, bucket: str = "", wait: bool = True, backend: str = "loc
                 raise ValueError(
                     "Function return value must be a dictionary containing a 'value' key."
                 )
+
         return wrapper
+
     return decorator

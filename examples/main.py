@@ -1,6 +1,7 @@
 from TetherDB import DB
 import time
 
+
 def main():
     # Path to the config file
     config_file = "config.json"
@@ -17,7 +18,9 @@ def main():
     print("Direct write to Local backend successful.")
 
     # Queued Write
-    db.write_message("local_key2", {"data": "local_queued_write"}, backend="local", queue=True)
+    db.write_message(
+        "local_key2", {"data": "local_queued_write"}, backend="local", queue=True
+    )
     print("Queued write to Local backend enqueued.")
 
     # Using Tether Decorator
@@ -45,7 +48,9 @@ def main():
     print("Direct write to DynamoDB backend successful.")
 
     # Queued Write
-    db.write_message("dynamo_key2", {"data": "dynamo_queued_write"}, backend="dynamodb", queue=True)
+    db.write_message(
+        "dynamo_key2", {"data": "dynamo_queued_write"}, backend="dynamodb", queue=True
+    )
     print("Queued write to DynamoDB backend enqueued.")
 
     # Using Tether Decorator
@@ -98,7 +103,9 @@ def main():
     print("\n== Pagination Example (Local Backend) ==")
     print("Writing multiple keys for pagination demo...")
     for i in range(20):
-        db.write_message(f"paginated_key_{i}", f"value_{i}", backend="local", queue=True)
+        db.write_message(
+            f"paginated_key_{i}", f"value_{i}", backend="local", queue=True
+        )
 
     # Wait for queued writes to process
     time.sleep(3)
@@ -108,7 +115,9 @@ def main():
     page_size = 5
     next_marker = None
     while True:
-        result = db.list_keys(page_size=page_size, start_after=next_marker, backend="local")
+        result = db.list_keys(
+            page_size=page_size, start_after=next_marker, backend="local"
+        )
         keys = result["keys"]
         next_marker = result["next_marker"]
 

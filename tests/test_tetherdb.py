@@ -20,7 +20,7 @@ class TestTetherDB(unittest.TestCase):
             "queue_batch": {"size": 2, "timeout": 1.0},
             "local": {"filepath": "test_local.db"},
             "dynamodb": {"table_name": "TestTable"},
-            "etcd": {"host": "localhost", "port": 2379}
+            "etcd": {"host": "localhost", "port": 2379},
         }
 
     def setUp(self):
@@ -75,7 +75,9 @@ class TestTetherDB(unittest.TestCase):
         self.db.backends.dynamodb_table = mock_table  # Mock the backend table
         result = self.db.write_message("test_key", "test_value", backend="dynamodb")
         self.assertTrue(result)
-        mock_table.put_item.assert_called_once_with(Item={"key": "test_key", "value": "test_value"})
+        mock_table.put_item.assert_called_once_with(
+            Item={"key": "test_key", "value": "test_value"}
+        )
 
     @patch("etcd3gw.client.Etcd3Client.put")
     def test_write_message_etcd(self, mock_etcd_put):
@@ -85,11 +87,13 @@ class TestTetherDB(unittest.TestCase):
         self.assertTrue(result)
         self.db.backends.etcd.put.assert_called_once_with("test_key", "test_value")
 
-    # --- Queued Write Tests ---
+        # --- Queued Write Tests ---
         @patch("TetherDB.db.dbm.open", autospec=True)
         def test_queued_write_processing(self, mock_dbm_open):
             """Test that queued writes are processed correctly."""
-            self.db.backends.local_db_file = self.config["local"]["filepath"]  # Ensure local backend file is set
+            self.db.backends.local_db_file = self.config["local"][
+                "filepath"
+            ]  # Ensure local backend file is set
 
             # Queue two messages for processing
             self.db.write_message("key1", "value1", backend="local", queue=True)
@@ -97,6 +101,7 @@ class TestTetherDB(unittest.TestCase):
 
             # Allow time for the background worker to process the queue
             import time
+
             time.sleep(3)
 
             self.db.stop()  # Stop the worker gracefully
@@ -111,6 +116,7 @@ class TestTetherDB(unittest.TestCase):
     @patch.object(DB, "write_message", return_value=True)
     def test_tether_decorator(self, mock_write_message):
         """Test the tether decorator for direct writes."""
+
         @self.db.tether(bucket="test_bucket", backend="local", wait=True)
         def example_func():
             return {"key": "decorator_key", "value": {"nested": "decorator_value"}}
@@ -118,12 +124,17 @@ class TestTetherDB(unittest.TestCase):
         result = example_func()
         self.assertTrue(result)
         mock_write_message.assert_called_once_with(
-            "decorator_key", '{"nested": "decorator_value"}', "test_bucket", "local", False
+            "decorator_key",
+            '{"nested": "decorator_value"}',
+            "test_bucket",
+            "local",
+            False,
         )
 
     @patch.object(DB, "write_message", return_value=True)
     def test_tether_decorator_invalid_output(self, mock_write_message):
         """Test that tether decorator raises an error for invalid function return."""
+
         @self.db.tether(bucket="test_bucket", backend="local", wait=True)
         def invalid_func():
             return {"invalid_key": "no_value"}
