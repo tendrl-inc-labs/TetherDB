@@ -90,47 +90,6 @@ Ensure the table exists and matches the configuration. If the table does not exi
 
 ---
 
-## DynamoDB Access Permissions
-
-The IAM role or user running TetherDB must have the following DynamoDB permissions:
-
-- **`dynamodb:PutItem`**: To write data.
-- **`dynamodb:Scan`**: To list keys.
-
-### Example IAM Policy
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "dynamodb:PutItem",
-        "dynamodb:Scan"
-      ],
-      "Resource": "arn:aws:dynamodb:*:*:table/MyDynamoDBTable"
-    }
-  ]
-}
-```
-
-Replace `MyDynamoDBTable` with the name of your table.
-
----
-
-## Verifying Table Configuration
-
-You can verify the table exists and has the correct schema using the AWS CLI:
-
-```bash
-aws dynamodb describe-table --table-name MyDynamoDBTable
-```
-
-Ensure the output includes a `key` attribute as the **partition key**.
-
----
-
 ## Configuration
 
 TetherDB supports configuration in two ways:
@@ -279,59 +238,6 @@ def generate_user():
     return {"key": "user:123", "value": {"name": "Alice", "role": "admin"}}
 
 generate_user()
-```
-
----
-
-## Example: Complete Workflow
-
-```python
-from TetherDB import DB
-import time
-
-# Initialize the DB using a file
-db = DB(config_file="config.json")
-
-# OR initialize using a dictionary
-config = {"logging": "debug", "local": {"filepath": "localdb"}}
-db = DB(config=config)
-
-# Direct write
-db.write_message("direct_key", {"data": "direct_write"}, backend="local")
-
-# Queued write
-db.write_message("queued_key", "queued_write", backend="etcd", queue=True)
-
-# Use tether decorator
-@db.tether(bucket="logs", backend="dynamodb", wait=False)
-def log_entry():
-    return {"key": "log:123", "value": {"event": "user_login", "user": "john_doe"}}
-
-log_entry()
-
-# List keys with pagination
-print("Listing keys from Local backend:")
-result = db.list_keys(page_size=5, backend="local")
-print(result)
-
-# Allow queued writes to process
-time.sleep(3)
-
-# Gracefully stop worker
-db.stop()
-```
-
----
-
-## Queued Writes and Batch Processing
-
-Configure batch size and timeout in `config` or `config_file`:
-
-```json
-"queue_batch": {
-  "size": 5,
-  "timeout": 2.0
-}
 ```
 
 ---

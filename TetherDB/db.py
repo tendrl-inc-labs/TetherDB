@@ -14,6 +14,7 @@ class DB:
     """
     Main database class handling writes, listing, tethered functions, and batching.
     """
+
     __slots__ = ["config", "logger", "backends", "queue", "_db_lock", "worker"]
 
     def __init__(self, config: dict = None, config_file: str = None):
@@ -26,7 +27,7 @@ class DB:
         """
         if config and config_file:
             raise ValueError("Provide either 'config' or 'config_file', not both.")
-        
+
         if config:
             self.config = config
         elif config_file:
@@ -35,6 +36,7 @@ class DB:
         else:
             raise ValueError("Either 'config' or 'config_file' must be provided.")
 
+        # Initialize logger, backends, queue, and worker
         self.logger = initialize_logger(self.config)
         self.backends = BackendInitializer(self.config, self.logger)
         self.queue = Queue()
@@ -43,57 +45,75 @@ class DB:
             self.queue, self._process_batch, self.logger, self._db_lock
         )
 
+        # Automatically start the worker
+        self.start()
+
+    def start(self):
+        """Start the background worker for queued writes."""
         self.worker.start(
             self.config.get("queue_batch", {}).get("size", 10),
             self.config.get("queue_batch", {}).get("timeout", 2.0),
         )
 
+    def stop(self):
+        """Stop the background worker gracefully."""
+        self.worker.stop()
+
     def write_message(
-        self, key: str, value: str, bucket="", backend="local", queue=False
+        self,
+        key: str,
+        value: str,
+        bucket: str = "",
+        backend: str = "local",
+        queue: bool = False,
     ):
         """
-        Write a key-value pair directly or queue it for batch processing.
+        Write a key-value pair directly to a backend or queue it for batch processing.
 
         :param key: Key for the data.
-        :param value: The data to store.
+        :param value: The data to store. Must be JSON serializable.
         :param bucket: Optional bucket prefix.
-        :param backend: Backend to write to.
-        :param queue: If True, queue the write for batch processing.
+        :param backend: Backend to write to ('local', 'dynamodb', or 'etcd').
+        :param queue: If True, queue the write for background processing.
+        :raises ValueError: If the value is not JSON serializable or the backend is invalid.
         """
         self._validate_backend(backend)
         full_key = build_key(bucket, key)
         try:
+            # Ensure value is JSON serializable
             if isinstance(value, dict):
                 value = json.dumps(value)
+            else:
+                json.dumps(value)  # Raises ValueError if not serializable
 
             if queue:
                 self.queue.put((full_key, value, backend))
                 self.logger.debug(f"Message queued: {full_key}")
                 return True
 
-            # Use the shared lock for direct writes
+            # Perform direct write
             with self._db_lock:
                 self._write_to_backend(full_key, value, backend)
             return True
-        except Exception as e:
+        except (ValueError, TypeError) as e:
             self.logger.error(f"Error writing message: {e}")
-            return False
+            raise ValueError("Invalid value: Must be JSON serializable")
 
     def _validate_backend(self, backend):
-            """
-            Validates that the backend is configured and ready to use.
+        """
+        Validates that the backend is configured and ready to use.
 
-            :param backend: The backend to validate ('local', 'dynamodb', 'etcd').
-            :raises ValueError: If the backend is not configured.
-            """
-            if backend == "local" and not self.backends.local_db_file:
-                raise ValueError("Local backend is not configured in the config file.")
-            elif backend == "dynamodb" and not self.backends.dynamodb_table:
-                raise ValueError("DynamoDB backend is not configured in the config file.")
-            elif backend == "etcd" and not self.backends.etcd:
-                raise ValueError("etcd backend is not configured in the config file.")
-            elif backend not in {"local", "dynamodb", "etcd"}:
-                raise ValueError(f"Unsupported backend: {backend}")
+        :param backend: The backend to validate ('local', 'dynamodb', 'etcd').
+        :raises ValueError: If the backend is not configured.
+        """
+        if backend == "local" and not self.backends.local_db_file:
+            raise ValueError("Local backend is not configured in the config file.")
+        elif backend == "dynamodb" and not self.backends.dynamodb_table:
+            raise ValueError("DynamoDB backend is not configured in the config file.")
+        elif backend == "etcd" and not self.backends.etcd:
+            raise ValueError("etcd backend is not configured in the config file.")
+        elif backend not in {"local", "dynamodb", "etcd"}:
+            raise ValueError(f"Unsupported backend: {backend}")
 
     def _process_batch(self, batch):
         """

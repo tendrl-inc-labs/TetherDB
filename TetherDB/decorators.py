@@ -1,4 +1,5 @@
 import uuid
+import json
 from functools import wraps
 
 def tether(db_instance, bucket: str = "", wait: bool = True, backend: str = "local"):
@@ -20,10 +21,14 @@ def tether(db_instance, bucket: str = "", wait: bool = True, backend: str = "loc
             result = func(*args, **kwargs)
             if isinstance(result, dict) and "value" in result:
                 key = result.get("key", str(uuid.uuid4()))
-                db_instance.write_message(key, result["value"], bucket, backend, not wait)
+                value = result["value"]
+                if isinstance(value, dict):  # Ensure JSON encoding for dict values
+                    value = json.dumps(value)
+                db_instance.write_message(key, value, bucket, backend, not wait)
+                return True
             else:
-                db_instance.logger.error(
-                    f"Function '{func.__name__}' must return a dictionary with 'value'."
+                raise ValueError(
+                    "Function return value must be a dictionary containing a 'value' key."
                 )
         return wrapper
     return decorator
