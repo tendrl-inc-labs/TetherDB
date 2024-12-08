@@ -117,7 +117,7 @@ class TestTetherDB(unittest.TestCase):
     def test_tether_decorator(self, mock_write_message):
         """Test the tether decorator for direct writes."""
 
-        @self.db.tether(bucket="test_bucket", backend="local", wait=True)
+        @self.db.tether(bucket="test_bucket", backend="local", queue=True)
         def example_func():
             return {"key": "decorator_key", "value": {"nested": "decorator_value"}}
 
@@ -135,7 +135,7 @@ class TestTetherDB(unittest.TestCase):
     def test_tether_decorator_invalid_output(self, mock_write_message):
         """Test that tether decorator raises an error for invalid function return."""
 
-        @self.db.tether(bucket="test_bucket", backend="local", wait=True)
+        @self.db.tether(bucket="test_bucket", backend="local", queue=True)
         def invalid_func():
             return {"invalid_key": "no_value"}
 

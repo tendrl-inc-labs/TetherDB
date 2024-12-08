@@ -3,7 +3,8 @@ import json
 from functools import wraps
 
 
-def tether(db_instance, bucket: str = "", wait: bool = True, backend: str = "local"):
+
+def tether(db_instance, bucket: str = "", queue: bool = False, backend: str = "local"):
     """
     A decorator to write the return value of a function to the database.
 
@@ -26,7 +27,7 @@ def tether(db_instance, bucket: str = "", wait: bool = True, backend: str = "loc
                 value = result["value"]
                 if isinstance(value, dict):
                     value = json.dumps(value)
-                db_instance.write_message(key, value, bucket, backend, not wait)
+                db_instance.write_message(key, value, bucket, backend, not queue)
                 return True
             else:
                 raise ValueError(

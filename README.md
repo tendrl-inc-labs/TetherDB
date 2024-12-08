@@ -233,7 +233,7 @@ Write the **return value** of a function to the database.
 **Example**:
 
 ```python
-@db.tether(bucket="users", backend="local", wait=True)
+@db.tether(bucket="users", backend="local", queue=True)
 def generate_user():
     return {"key": "user:123", "value": {"name": "Alice", "role": "admin"}}
 
