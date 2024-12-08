@@ -155,9 +155,8 @@ class DB:
         - "key": Optional custom key (str). A UUID is generated if not provided.
         - "value": The data to store (str or dict).
 
-        :param db_instance: Reference to the DB instance.
         :param bucket: Optional bucket prefix.
-        :param wait: If True, writes immediately; if False, queues the write.
+        :param queue: If True, writes immediately; if False, queues the write.
         :param backend: Backend to write to: 'local', 'dynamodb', or 'etcd'.
         """
 
