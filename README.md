@@ -20,8 +20,11 @@
   - Direct writes for immediate storage.
   - Queued writes for efficient batch processing in the background.
 - **Batch Processing**: Configurable batch size and timeouts for queued writes.
+- **Flexible Configuration**:
+  - Pass a configuration file (`config_file`) **or** a configuration dictionary (`config`).
+  - Clear error handling ensures only one configuration method is used.
 - **Logging Configuration**:
-  - Control logging levels (`debug`, `info`, `none`) directly via `config.json`.
+  - Control logging levels (`debug`, `info`, `none`) directly via `config`.
 - **Lifecycle Management**:
   - **`start()`**: Start background workers for queued writes.
   - **`stop()`**: Gracefully stop the background worker.
@@ -47,11 +50,101 @@ pip install boto3 etcd3gw
 
 ---
 
+### DynamoDB Table Setup
+
+To use the DynamoDB backend, you must create a DynamoDB table with the following requirements:
+
+1. **Table Name**: Must match the `table_name` provided in the `config` or `config_file`.
+
+2. **Primary Key**:
+   - **Partition Key**: Use a string attribute named `key`.
+   - **No Sort Key** is required.
+
+3. **Example AWS CLI Command to Create the Table**:
+
+```bash
+aws dynamodb create-table \
+    --table-name MyDynamoDBTable \
+    --attribute-definitions AttributeName=key,AttributeType=S \
+    --key-schema AttributeName=key,KeyType=HASH \
+    --billing-mode PAY_PER_REQUEST
+```
+
+### Table Schema Example
+
+| Attribute Name | Type    | Key Type      |
+|----------------|---------|---------------|
+| `key`         | String  | Partition Key |
+
+---
+
+## DynamoDB Configuration in `config.json`
+
+```json
+"dynamodb": {
+  "table_name": "MyDynamoDBTable"
+}
+```
+
+Ensure the table exists and matches the configuration. If the table does not exist, DynamoDB operations will fail.
+
+---
+
+## DynamoDB Access Permissions
+
+The IAM role or user running TetherDB must have the following DynamoDB permissions:
+
+- **`dynamodb:PutItem`**: To write data.
+- **`dynamodb:Scan`**: To list keys.
+
+### Example IAM Policy
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:PutItem",
+        "dynamodb:Scan"
+      ],
+      "Resource": "arn:aws:dynamodb:*:*:table/MyDynamoDBTable"
+    }
+  ]
+}
+```
+
+Replace `MyDynamoDBTable` with the name of your table.
+
+---
+
+## Verifying Table Configuration
+
+You can verify the table exists and has the correct schema using the AWS CLI:
+
+```bash
+aws dynamodb describe-table --table-name MyDynamoDBTable
+```
+
+Ensure the output includes a `key` attribute as the **partition key**.
+
+---
+
 ## Configuration
 
-Create a `config.json` file to specify backend settings and logging levels.
+TetherDB supports configuration in two ways:
 
-### Example `config.json`
+1. **Using a JSON file (`config_file`)**.
+2. **Passing a Python dictionary (`config`)**.
+
+> **Note**: You must provide **one**, not both. TetherDB will raise an error if both are passed.
+
+---
+
+### Example 1: JSON Configuration File (`config.json`)
+
+Create a `config.json` file to specify backend settings and logging levels.
 
 ```json
 {
@@ -80,17 +173,40 @@ Create a `config.json` file to specify backend settings and logging levels.
 }
 ```
 
----
-
-## Usage
-
-### Initialization
+**Usage**:
 
 ```python
 from TetherDB import DB
 
-# Initialize the database
-db = DB("config.json")
+db = DB(config_file="config.json")
+```
+
+---
+
+### Example 2: Python Configuration Dictionary (`config`)
+
+```python
+from TetherDB import DB
+
+config = {
+    "logging": "debug",
+    "queue_batch": {"size": 10, "timeout": 2.0},
+    "local": {"filepath": "localdb"},
+    "dynamodb": {"table_name": "MyDynamoDBTable"},
+    "etcd": {
+        "host": "localhost",
+        "port": 2379,
+        "username": "user",
+        "password": "password",
+        "use_ssl": True,
+        "cert_file": "cert.pem",
+        "key_file": "key.pem",
+        "ca_cert_file": "ca.pem",
+        "timeout": 5
+    }
+}
+
+db = DB(config=config)
 ```
 
 ---
@@ -173,8 +289,12 @@ generate_user()
 from TetherDB import DB
 import time
 
-# Initialize the DB
-db = DB("config.json")
+# Initialize the DB using a file
+db = DB(config_file="config.json")
+
+# OR initialize using a dictionary
+config = {"logging": "debug", "local": {"filepath": "localdb"}}
+db = DB(config=config)
 
 # Direct write
 db.write_message("direct_key", {"data": "direct_write"}, backend="local")
@@ -205,7 +325,7 @@ db.stop()
 
 ## Queued Writes and Batch Processing
 
-Configure batch size and timeout in `config.json`:
+Configure batch size and timeout in `config` or `config_file`:
 
 ```json
 "queue_batch": {
@@ -218,7 +338,7 @@ Configure batch size and timeout in `config.json`:
 
 ## Debug Mode
 
-Enable `debug` logging in `config.json`:
+Enable `debug` logging in the configuration:
 
 ```json
 "logging": "debug"
