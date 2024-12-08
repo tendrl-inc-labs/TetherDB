@@ -1,18 +1,20 @@
 {
   "logging": "debug",
-  "queue_batch": {
-    "size": 10,
-    "timeout": 2.0
-  },
   "local": {
     "filepath": "local_db.db"
   },
   "dynamodb": {
-    "table_name": "example_table"
+    "table_name": "YourDynamoDBTable"
   },
   "etcd": {
     "host": "localhost",
     "port": 2379,
+    "username": "root",
+    "password": "password",
     "use_ssl": false
+  },
+  "queue_batch": {
+    "size": 5,
+    "timeout": 2.0
   }
 }

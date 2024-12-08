@@ -1,5 +1,5 @@
 <div style="display: flex; align-items: flex-end;">
-  <img src="TDB_logo.png" alt="Logo" width="250" style="margin-right: 10px;">
+  <img src="assets/TDB_logo.png" alt="Logo" width="250" style="margin-right: 10px;">
 </div>
 <br>
 
@@ -80,21 +80,16 @@ Create a `config.json` file to specify backend settings and logging levels.
 }
 ```
 
-### Logging Configuration
-
-Set the `logging` level in the `config.json` file:
-
-- **`debug`**: Detailed debug information.
-- **`info`**: High-level logs only.
-- **`none`**: Disable all logging.
-
 ---
 
-## Initialization
+## Usage
+
+### Initialization
 
 ```python
 from TetherDB import DB
 
+# Initialize the database
 db = DB("config.json")
 ```
 
@@ -104,10 +99,11 @@ db = DB("config.json")
 
 ### 1. **`write_message`**
 
-Write a key-value pair **immediately** to the specified backend.
+Write a key-value pair **immediately** or **queue** it for background processing.
 
 ```python
 db.write_message("key1", {"name": "Alice"}, backend="local")
+db.write_message("key2", "simple_value", backend="etcd", queue=True)
 ```
 
 | Parameter  | Type         | Description                                        |
@@ -120,63 +116,102 @@ db.write_message("key1", {"name": "Alice"}, backend="local")
 
 ---
 
-### 2. **`start`**
+### 2. **`list_keys`**
 
-Start the background worker for queued writes.
+List keys stored in a backend with optional pagination.
 
 ```python
-db.start()
+result = db.list_keys(page_size=5, backend="local")
+print(result)
 ```
+
+| Parameter      | Type     | Description                                        |
+|----------------|----------|----------------------------------------------------|
+| `bucket`       | `str`    | Optional bucket prefix for filtering keys.         |
+| `page_size`    | `int`    | Maximum number of keys per page.                   |
+| `start_after`  | `str`    | Start listing keys after this key.                 |
+| `backend`      | `str`    | Backend to list keys from: `local`, `dynamodb`, `etcd`. |
 
 ---
 
-### 3. **`stop`**
+### 3. **`start`** and **`stop`**
 
-Stop the background worker and flush any remaining messages.
+Control the background worker for queued writes.
 
 ```python
-db.stop()
+db.start()  # Start the background worker
+db.stop()   # Gracefully stop the worker
 ```
 
 ---
 
 ### 4. **`tether` Decorator**
 
-Automatically write the **return value** of a function to the database.
+Write the **return value** of a function to the database.
 
-**Function Return Requirements**:
+#### Requirements
 
-- The function must return a dictionary with:
-  - `"key"`: Custom key (optional). A UUID is generated if not provided.
-  - `"value"`: The data to store. Must be a `str` or `dict`.
+- Function must return a dictionary with:
+  - `"key"`: (Optional) Custom key. Defaults to a UUID if not provided.
+  - `"value"`: The data to store (str or dict).
+
+**Example**:
 
 ```python
 @db.tether(bucket="users", backend="local", wait=True)
-def fetch_user():
+def generate_user():
     return {"key": "user:123", "value": {"name": "Alice", "role": "admin"}}
 
-fetch_user()
+generate_user()
 ```
 
 ---
 
-## Queued Writes with Batch Processing
+## Example: Complete Workflow
 
-TetherDB supports background writes with batching. Configure these in `config.json`:
+```python
+from TetherDB import DB
+import time
+
+# Initialize the DB
+db = DB("config.json")
+
+# Direct write
+db.write_message("direct_key", {"data": "direct_write"}, backend="local")
+
+# Queued write
+db.write_message("queued_key", "queued_write", backend="etcd", queue=True)
+
+# Use tether decorator
+@db.tether(bucket="logs", backend="dynamodb", wait=False)
+def log_entry():
+    return {"key": "log:123", "value": {"event": "user_login", "user": "john_doe"}}
+
+log_entry()
+
+# List keys with pagination
+print("Listing keys from Local backend:")
+result = db.list_keys(page_size=5, backend="local")
+print(result)
+
+# Allow queued writes to process
+time.sleep(3)
+
+# Gracefully stop worker
+db.stop()
+```
+
+---
+
+## Queued Writes and Batch Processing
+
+Configure batch size and timeout in `config.json`:
 
 ```json
 "queue_batch": {
-    "size": 5,
-    "timeout": 2.0
+  "size": 5,
+  "timeout": 2.0
 }
-```
-
-**Example:**
-
-```python
-db.start()
-db.write_message("key2", {"name": "Bob"}, backend="etcd", queue=True)
-db.stop()
 ```
 
 ---
@@ -189,11 +224,11 @@ Enable `debug` logging in `config.json`:
 "logging": "debug"
 ```
 
-Example debug output:
+Sample Debug Output:
 
 ```
-2024-06-01 10:00:00 - DEBUG - Message queued for write: key2 -> {"name": "Bob"}
-2024-06-01 10:00:01 - DEBUG - Batch write to etcd: key2 -> {"name": "Bob"}
+2024-06-01 10:00:00 - DEBUG - Message queued for write: queued_key -> queued_write
+2024-06-01 10:00:01 - DEBUG - Batch write to etcd: queued_key -> queued_write
 2024-06-01 10:00:02 - DEBUG - Background worker shutting down.
 ```
 
@@ -201,7 +236,7 @@ Example debug output:
 
 ## Cleanup and Shutdown
 
-Always stop the worker to ensure data integrity:
+Always stop the background worker to ensure no pending writes are lost:
 
 ```python
 db.stop()
@@ -211,10 +246,10 @@ db.stop()
 
 ## Closing Thoughts
 
-TetherDB offers flexible and efficient key-value storage across `local`, `DynamoDB`, and `etcd` backends. It is designed for performance, scalability, and ease of use.
+TetherDB offers:
 
-- **Direct writes** for simplicity.
-- **Queued writes** for efficiency and batching.
-- **Tether decorator** for seamless integration with function outputs.
+- **Direct Writes** for simplicity.
+- **Queued Writes** for efficient batching.
+- **Tether Decorator** for seamless function integration.
 
-Configure logging, choose your backend, and enjoy efficient storage management!
+Easily configure your preferred backend, enable logging, and enjoy the flexibility of hybrid storage!
