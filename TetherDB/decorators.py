@@ -24,7 +24,7 @@ def tether(db_instance, bucket: str = "", wait: bool = True, backend: str = "loc
             if isinstance(result, dict) and "value" in result:
                 key = result.get("key", str(uuid.uuid4()))
                 value = result["value"]
-                if isinstance(value, dict):  # Ensure JSON encoding for dict values
+                if isinstance(value, dict):
                     value = json.dumps(value)
                 db_instance.write_message(key, value, bucket, backend, not wait)
                 return True
