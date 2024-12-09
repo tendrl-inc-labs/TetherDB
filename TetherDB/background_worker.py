@@ -17,14 +17,6 @@ class BackgroundWorker:
     ]
 
     def __init__(self, queue, process_batch, logger, lock):
-        """
-        Initialize the BackgroundWorker.
-
-        :param queue: Queue containing messages to process.
-        :param process_batch: Function to process a batch of messages.
-        :param logger: Logger instance for debug and info logs.
-        :param lock: Thread lock for synchronized writes.
-        """
         self.queue = queue
         self.process_batch = process_batch
         self.logger = logger
@@ -47,20 +39,22 @@ class BackgroundWorker:
     def stop(self):
         """Stop the background worker thread gracefully."""
         if self.is_running:
+            self.logger.debug("Stopping background worker...")
             self.is_running = False
-            self.queue.put(None)  # Signal the worker thread to terminate
-            if self.thread:
-                self.thread.join(timeout=5)  # Avoid indefinite hanging
+            self.queue.put(None)  # Send stop signal
+            self.thread.join(timeout=5)
             self.logger.debug("Background worker stopped.")
 
     def _worker_loop(self):
-        """Process queued messages in batches."""
+        """Main loop to process messages from the queue in batches."""
         batch = []
         while self.is_running:
             try:
                 item = self.queue.get(timeout=self.batch_timeout)
-                if item is None:  # Stop signal received
+                if item is None:  # Stop signal
+                    self.logger.debug("Stop signal received. Exiting worker loop.")
                     break
+
                 batch.append(item)
                 self.queue.task_done()
 
@@ -68,17 +62,21 @@ class BackgroundWorker:
                     self._process_and_clear_batch(batch)
 
             except Empty:
-                # Timeout reached; process any pending batch
+                # Batch timeout reached; process partial batch
                 if batch:
                     self._process_and_clear_batch(batch)
 
-        # Final cleanup: process remaining messages in the batch
+        # Final cleanup: Process any remaining batch
         if batch:
             self._process_and_clear_batch(batch)
         self.logger.debug("Worker loop exited cleanly.")
 
     def _process_and_clear_batch(self, batch):
         """Process and clear the current batch."""
-        with self.lock:
-            self.process_batch(batch)
-        batch.clear()
+        try:
+            self.process_batch(batch)  # Call the batch processor atomically
+            self.logger.debug(f"Batch processed: {len(batch)} items")
+        except Exception as e:
+            self.logger.error(f"Error processing batch: {e}")
+        finally:
+            batch.clear()  # Ensure the batch is cleared regardless of errors

@@ -118,8 +118,7 @@ def main():
         result = db.list_keys(
             page_size=page_size, start_after=next_marker, backend="local"
         )
-        keys = result["keys"]
-        next_marker = result["next_marker"]
+        keys, next_marker = result  # Unpack tuple
 
         print(f"Keys: {keys}")
         if not next_marker:

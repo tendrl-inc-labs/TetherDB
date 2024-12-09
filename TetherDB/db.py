@@ -81,11 +81,10 @@ class DB:
         self._validate_backend(backend)
         full_key = build_key(bucket, key)
         try:
-            # Ensure value is JSON serializable
             if isinstance(value, dict):
                 value = json.dumps(value)
             else:
-                json.dumps(value)  # Raises ValueError if not serializable
+                json.dumps(value)
 
             if queue:
                 self.queue.put((full_key, value, backend))
@@ -99,6 +98,35 @@ class DB:
         except (ValueError, TypeError) as e:
             self.logger.error(f"Error writing message: {e}")
             raise ValueError("Invalid value: Must be JSON serializable")
+
+    def tether(self, bucket: str = "", queue: bool = False, backend: str = "local"):
+        """
+        A decorator to write the return value of a function to the database.
+
+        The function must return a dictionary with:
+        - "key": Optional custom key (str). A UUID is generated if not provided.
+        - "value": The data to store (str or dict).
+
+        :param bucket: Optional bucket prefix.
+        :param queue: If True, writes immediately; if False, queues the write.
+        :param backend: Backend to write to: 'local', 'dynamodb', or 'etcd'.
+        """
+        def decorator(func):
+            @wraps(func)
+            def wrapper(*args, **kwargs):
+                result = func(*args, **kwargs)
+                if isinstance(result, dict) and "value" in result:
+                    key = result.get("key", str(uuid.uuid4()))
+                    value = result["value"]
+                    self.write_message(key, value, bucket, backend, queue=queue)
+                    return True
+                else:
+                    raise ValueError(
+                        "Function return value must be a dictionary containing a 'value' key."
+                    )
+            return wrapper
+
+        return decorator
 
     def _validate_backend(self, backend):
         """
@@ -122,9 +150,12 @@ class DB:
 
         :param batch: List of messages to process.
         """
-        with self._db_lock:
-            for full_key, value, backend in batch:
-                self._write_to_backend(full_key, value, backend)
+        try:
+            with self._db_lock:
+                for full_key, value, backend in batch:
+                    self._write_to_backend(full_key, value, backend)
+        except Exception as e:
+            self.logger.error(f"Error processing batch: {e}")
 
     def _write_to_backend(self, key, value, backend):
         """
@@ -146,38 +177,6 @@ class DB:
             self.logger.debug(f"Written to etcd: {key}")
         else:
             raise ValueError(f"Invalid backend or backend not initialized: {backend}")
-
-    def tether(self, bucket: str = "", queue: bool = False, backend: str = "local"):
-        """
-        A decorator to write the return value of a function to the database.
-
-        The function must return a dictionary with:
-        - "key": Optional custom key (str). A UUID is generated if not provided.
-        - "value": The data to store (str or dict).
-
-        :param bucket: Optional bucket prefix.
-        :param queue: If True, writes immediately; if False, queues the write.
-        :param backend: Backend to write to: 'local', 'dynamodb', or 'etcd'.
-        """
-        def decorator(func):
-            @wraps(func)
-            def wrapper(*args, **kwargs):
-                result = func(*args, **kwargs)
-                if isinstance(result, dict) and "value" in result:
-                    key = result.get("key", str(uuid.uuid4()))
-                    value = result["value"]
-                    if isinstance(value, dict):
-                        value = json.dumps(value)
-                    self.write_message(key, value, bucket, backend, not queue)
-                    return True
-                else:
-                    raise ValueError(
-                        "Function return value must be a dictionary containing a 'value' key."
-                    )
-
-            return wrapper
-
-        return decorator
 
     def list_keys(
         self, page_size: int = 10, start_after: str = None, bucket: str = "", backend: str = "local"
@@ -203,7 +202,7 @@ class DB:
             raise ValueError(f"Unsupported backend: {backend}")
 
     def _list_local_keys(self, page_size, start_after, bucket):
-        """List keys from the local backend using the key index."""
+        """List keys from the local backend."""
         with dbm.open(self.backends.local_db_file, "r") as index_db:
             all_keys = sorted(k.decode("utf-8") for k in index_db.keys())
             if bucket:
@@ -218,24 +217,38 @@ class DB:
             "ExpressionAttributeNames": {"#k": "key"},
             "Limit": page_size,
         }
+
         if start_after:
-            scan_args["ExclusiveStartKey"] = {"key": {"S": start_after}}
+            scan_args["ExclusiveStartKey"] = {"key": start_after}
 
         response = self.backends.dynamodb_table.meta.client.scan(**scan_args)
-        keys = [item["key"]["S"] for item in response.get("Items", [])]
+
+        keys = [item["key"] for item in response.get("Items", [])]
+
         if bucket:
             keys = [k for k in keys if k.startswith(build_key(bucket, ""))]
-        next_marker = response.get("LastEvaluatedKey", {}).get("key", {}).get("S")
-        return keys, next_marker
+
+        next_marker = response.get("LastEvaluatedKey", {}).get("key")
+
+        return {"keys": keys, "next_marker": next_marker}
 
     def _list_etcd_keys(self, page_size, start_after, bucket):
-        """List keys from etcd."""
-        prefix = bucket if bucket else ""  # Use bucket as prefix if specified
-        start_key = start_after + "\x00" if start_after else prefix
+        """
+        List keys from etcd backend.
 
-        response = self.backends.etcd.get(
-            prefix=start_key,  # Fetch keys with the given prefix
-            limit=page_size
-        )
-        keys = [kv["key"].decode("utf-8") for kv in response.get("kvs", [])]
-        return paginate_keys(keys, page_size, start_after)
+        :param page_size: Number of keys to fetch.
+        :param start_after: Key to start after (pagination).
+        :param bucket: Bucket prefix for filtering keys.
+        :return: A tuple (keys, next_marker).
+        """
+        prefix = bucket if bucket else ""
+
+        try:
+            response = self.backends.etcd.get_prefix(prefix, limit=page_size)
+            keys = [kv.key.decode("utf-8") for kv in response.kvs]
+
+            return paginate_keys(keys, page_size, start_after)
+
+        except Exception as e:
+            self.logger.error(f"Error listing etcd keys: {e}")
+            return [], None
