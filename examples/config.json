@@ -1,0 +1,18 @@
+{
+  "logging": "debug",
+  "local": {
+    "filepath": "local_db.db"
+  },
+  "dynamodb": {
+    "table_name": "TetherTest"
+  },
+  "etcd": {
+    "host": "localhost",
+    "port": 2379,
+    "use_ssl": false
+  },
+  "queue_batch": {
+    "size": 5,
+    "timeout": 2.0
+  }
+}
