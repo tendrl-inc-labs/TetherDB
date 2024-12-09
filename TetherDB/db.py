@@ -8,7 +8,7 @@ import uuid
 from .base_logger import initialize_logger
 from .backends import BackendInitializer
 from .background_worker import BackgroundWorker
-from .key_utils import build_key
+from .key_utils import build_key, paginate_keys
 
 
 class DB:
@@ -178,3 +178,64 @@ class DB:
             return wrapper
 
         return decorator
+
+    def list_keys(
+        self, page_size: int = 10, start_after: str = None, bucket: str = "", backend: str = "local"
+    ):
+        """
+        List all keys from the specified backend with optional pagination and bucket filtering.
+
+        :param page_size: Number of keys to list at once.
+        :param start_after: Start listing keys after this key (pagination marker).
+        :param bucket: Optional bucket prefix for filtering keys.
+        :param backend: Backend to list keys from ('local', 'dynamodb', 'etcd').
+        :return: A tuple (list of keys, next_marker).
+        """
+        self._validate_backend(backend)
+
+        if backend == "local":
+            return self._list_local_keys(page_size, start_after, bucket)
+        elif backend == "dynamodb":
+            return self._list_dynamodb_keys(page_size, start_after, bucket)
+        elif backend == "etcd":
+            return self._list_etcd_keys(page_size, start_after, bucket)
+        else:
+            raise ValueError(f"Unsupported backend: {backend}")
+
+    def _list_local_keys(self, page_size, start_after, bucket):
+        """List keys from the local backend using the key index."""
+        with dbm.open(self.backends.local_db_file, "r") as index_db:
+            all_keys = sorted(k.decode("utf-8") for k in index_db.keys())
+            if bucket:
+                all_keys = [k for k in all_keys if k.startswith(build_key(bucket, ""))]
+        return paginate_keys(all_keys, page_size, start_after)
+
+    def _list_dynamodb_keys(self, page_size, start_after, bucket):
+        """List keys from DynamoDB."""
+        scan_args = {
+            "TableName": self.backends.dynamodb_table.name,
+            "ProjectionExpression": "#k",
+            "ExpressionAttributeNames": {"#k": "key"},
+            "Limit": page_size,
+        }
+        if start_after:
+            scan_args["ExclusiveStartKey"] = {"key": {"S": start_after}}
+
+        response = self.backends.dynamodb_table.meta.client.scan(**scan_args)
+        keys = [item["key"]["S"] for item in response.get("Items", [])]
+        if bucket:
+            keys = [k for k in keys if k.startswith(build_key(bucket, ""))]
+        next_marker = response.get("LastEvaluatedKey", {}).get("key", {}).get("S")
+        return keys, next_marker
+
+    def _list_etcd_keys(self, page_size, start_after, bucket):
+        """List keys from etcd."""
+        prefix = bucket if bucket else ""  # Use bucket as prefix if specified
+        start_key = start_after + "\x00" if start_after else prefix
+
+        response = self.backends.etcd.get(
+            prefix=start_key,  # Fetch keys with the given prefix
+            limit=page_size
+        )
+        keys = [kv["key"].decode("utf-8") for kv in response.get("kvs", [])]
+        return paginate_keys(keys, page_size, start_after)

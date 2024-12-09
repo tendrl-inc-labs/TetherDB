@@ -23,6 +23,8 @@
 - **Flexible Configuration**:
   - Pass a configuration file (`config_file`) **or** a configuration dictionary (`config`).
   - Clear error handling ensures only one configuration method is used.
+- **Key Listing**:
+  - Retrieve keys from any backend with optional pagination and bucket filtering.
 - **Logging Configuration**:
   - Control logging levels (`debug`, `info`, `none`) directly via `config`.
 - **Lifecycle Management**:
@@ -70,19 +72,15 @@ aws dynamodb create-table \
     --billing-mode PAY_PER_REQUEST
 ```
 
-### Table Schema Example
-
-| Attribute Name | Type    | Key Type      |
-|----------------|---------|---------------|
-| `key`         | String  | Partition Key |
-
 ---
 
 ## DynamoDB Configuration in `config.json`
 
 ```json
-"dynamodb": {
-  "table_name": "MyDynamoDBTable"
+{
+  "dynamodb": {
+    "table_name": "MyDynamoDBTable"
+  }
 }
 ```
 
@@ -107,7 +105,7 @@ Create a `config.json` file to specify backend settings and logging levels.
 
 ```json
 {
-  "logging": "debug",  // Options: debug, info, none
+  "logging": "debug",
   "queue_batch": {
     "size": 10,
     "timeout": 2.0
