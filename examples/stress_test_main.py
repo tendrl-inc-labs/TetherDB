@@ -30,25 +30,45 @@ def stress_test(db, backend, num_writes=100):
     Perform a stress test by writing a large number of keys to a backend.
     """
     print(f"Stress Testing {backend}: Writing {num_writes} keys...")
-    for i in range(num_writes):
-        db.write_message(
-            f"stress_key_{i}", {"data": f"value_{i}"}, backend=backend, queue=True
-        )
-    time.sleep(3)  # Allow queued writes to process
-    result = db.list_keys(backend=backend)
-    print(f"Total keys written: {len(result['keys'])}")
+    try:
+        for i in range(num_writes):
+            db.write_message(
+                f"stress_key_{i}", {"data": f"value_{i}"}, backend=backend, queue=True
+            )
+        time.sleep(3)  # Allow queued writes to process
+        result = db.list_messages(page_size=num_writes, backend=backend)
+        print(f"Total keys written: {len(result['messages'])}")
+    except Exception as e:
+        print(f"ERROR during stress test on {backend}: {str(e)}")
 
 
 def verify_write(db, key, backend):
     """
     Verify that a key exists in the specified backend.
     """
-    result = db.list_keys(backend=backend)
-    keys = result["keys"]
-    if key in keys:
-        print(f"Verified key '{key}' in backend '{backend}'.")
+    value = db.read_message(key, backend=backend)
+    if value:
+        print(f"Verified key '{key}' in backend '{backend}': {value}")
     else:
         print(f"ERROR: Key '{key}' not found in backend '{backend}'.")
+
+
+def test_update_message(db, backend, key, initial_value, updated_value):
+    """
+    Test updating a message in the backend.
+    """
+    db.write_message(key, initial_value, backend=backend)
+    print(f"Initial write complete for '{key}' in '{backend}'.")
+
+    success = db.update_message(key, updated_value, backend=backend)
+    if success:
+        print(
+            f"Successfully updated key '{key}' to '{updated_value}' in backend '{backend}'."
+        )
+        value = db.read_message(key, backend=backend)
+        print(f"Verified updated value: {value}")
+    else:
+        print(f"ERROR: Update failed for key '{key}' in backend '{backend}'.")
 
 
 # ================================
@@ -66,121 +86,78 @@ def main():
     # ================================
     print("== Local Backend Operations ==")
 
-    # Direct Write
+    # Direct Write and Verify
     db.write_message("local_key1", {"data": "local_direct_write"}, backend="local")
-    print("Direct write to Local backend successful.")
     verify_write(db, "local_key1", "local")
+
+    # Update and Verify
+    test_update_message(
+        db,
+        "local",
+        "local_update_key",
+        {"data": "initial_value"},
+        {"data": "updated_value"},
+    )
 
     # Queued Write
     db.write_message(
         "local_key2", {"data": "local_queued_write"}, backend="local", queue=True
     )
     print("Queued write to Local backend enqueued.")
-
-    # Using Tether Decorator
-    @db.tether(bucket="local_logs", queue=True, backend="local")
-    def local_tether_example():
-        return {"key": "local_tether_key", "value": "local_tethered_data"}
-
-    local_tether_example()
-    print("Tethered write to Local backend complete.")
-
-    # Give time for queued writes to process
-    time.sleep(3)
-
-    # Retrieve keys from Local Backend
-    print("Listing keys from Local backend:")
-    local_keys = db.list_keys(backend="local")
-    print(local_keys)
-
-    # Test Pagination
-    print("\nTesting Pagination for Local Backend:")
-    for i in range(20):
-        db.write_message(
-            f"paginated_key_{i}", f"value_{i}", backend="local", queue=True
-        )
-    time.sleep(3)
-
-    page_size = 5
-    next_marker = None
-    while True:
-        result = db.list_keys(
-            page_size=page_size, start_after=next_marker, backend="local"
-        )
-        keys, next_marker = result["keys"], result["next_marker"]
-        print(f"Keys: {keys}")
-        if not next_marker:
-            break
-
-    # Concurrent Writes and Stress Testing
-    concurrent_writes(db, "local", "local_concurrent")
-    stress_test(db, "local", num_writes=50)
+    time.sleep(3)  # Wait for processing
+    verify_write(db, "local_key2", "local")
 
     # ================================
     # DynamoDB Backend Operations
     # ================================
     print("\n== DynamoDB Backend Operations ==")
 
-    # Direct Write
+    # Direct Write and Verify
     db.write_message("dynamo_key1", {"data": "dynamo_direct_write"}, backend="dynamodb")
-    print("Direct write to DynamoDB backend successful.")
     verify_write(db, "dynamo_key1", "dynamodb")
+
+    # Update and Verify
+    test_update_message(
+        db,
+        "dynamodb",
+        "dynamo_update_key",
+        {"data": "initial_value"},
+        {"data": "updated_value"},
+    )
 
     # Queued Write
     db.write_message(
         "dynamo_key2", {"data": "dynamo_queued_write"}, backend="dynamodb", queue=True
     )
     print("Queued write to DynamoDB backend enqueued.")
-
-    # Tether Decorator
-    @db.tether(bucket="dynamo_logs", queue=True, backend="dynamodb")
-    def dynamo_tether_example():
-        return {"key": "dynamo_tether_key", "value": "dynamo_tethered_data"}
-
-    dynamo_tether_example()
-    print("Tethered write to DynamoDB backend complete.")
-
-    # Wait for writes and list keys
-    time.sleep(3)
-    print("Listing keys from DynamoDB backend:")
-    dynamo_keys = db.list_keys(backend="dynamodb")
-    print(dynamo_keys)
-
-    # Stress Test
-    stress_test(db, "dynamodb", num_writes=20)
+    time.sleep(3)  # Wait for processing
+    verify_write(db, "dynamo_key2", "dynamodb")
 
     # ================================
     # etcd Backend Operations
     # ================================
     print("\n== etcd Backend Operations ==")
 
-    # Direct Write
+    # Direct Write and Verify
     db.write_message("etcd_key1", {"data": "etcd_direct_write"}, backend="etcd")
-    print("Direct write to etcd backend successful.")
     verify_write(db, "etcd_key1", "etcd")
+
+    # Update and Verify
+    test_update_message(
+        db,
+        "etcd",
+        "etcd_update_key",
+        {"data": "initial_value"},
+        {"data": "updated_value"},
+    )
 
     # Queued Write
     db.write_message(
         "etcd_key2", {"data": "etcd_queued_write"}, backend="etcd", queue=True
     )
     print("Queued write to etcd backend enqueued.")
-
-    # Tether Decorator
-    @db.tether(bucket="etcd_logs", queue=True, backend="etcd")
-    def etcd_tether_example():
-        return {"key": "etcd_tether_key", "value": "etcd_tethered_data"}
-
-    etcd_tether_example()
-    print("Tethered write to etcd backend complete.")
-
-    # Wait for writes and list keys
-    time.sleep(3)
-    print("Listing keys from etcd backend:")
-    etcd_keys = db.list_keys(backend="etcd")
-    print(etcd_keys)
-
-    # Stress Test
-    stress_test(db, "etcd", num_writes=20)
+    time.sleep(3)  # Wait for processing
+    verify_write(db, "etcd_key2", "etcd")
 
     # ================================
     # Shutdown
