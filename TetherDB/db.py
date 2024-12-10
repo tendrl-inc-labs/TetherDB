@@ -52,8 +52,8 @@ class DB:
     def start(self):
         """Start the background worker for queued writes."""
         self.worker.start(
-            self.config.get("queue_batch", {}).get("size", 10),
-            self.config.get("queue_batch", {}).get("timeout", 2.0),
+            self.config.get("queue_batch", {}).get("size", 15),
+            self.config.get("queue_batch", {}).get("interval", 1),
         )
 
     def stop(self):

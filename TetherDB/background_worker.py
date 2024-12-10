@@ -13,7 +13,7 @@ class BackgroundWorker:
         "thread",
         "is_running",
         "batch_size",
-        "batch_timeout",
+        "batch_interval",
     ]
 
     def __init__(self, queue, process_batch, logger, lock):
@@ -24,14 +24,14 @@ class BackgroundWorker:
         self.thread = None
         self.is_running = False
         self.batch_size = 10
-        self.batch_timeout = 2.0
+        self.batch_interval = 2.0
 
-    def start(self, batch_size=10, batch_timeout=2.0):
+    def start(self, batch_size=10, batch_interval=2.0):
         """Start the background worker thread."""
         if not self.is_running:
             self.is_running = True
             self.batch_size = batch_size
-            self.batch_timeout = batch_timeout
+            self.batch_interval = batch_interval
             self.thread = threading.Thread(target=self._worker_loop, daemon=True)
             self.thread.start()
             self.logger.debug("Background worker started.")
@@ -50,7 +50,7 @@ class BackgroundWorker:
         batch = []
         while self.is_running:
             try:
-                item = self.queue.get(timeout=self.batch_timeout)
+                item = self.queue.get(timeout=self.batch_interval)
                 if item is None:  # Stop signal
                     self.logger.debug("Stop signal received. Exiting worker loop.")
                     break
@@ -62,7 +62,7 @@ class BackgroundWorker:
                     self._process_and_clear_batch(batch)
 
             except Empty:
-                # Batch timeout reached; process partial batch
+                # Batch interval reached; process partial batch
                 if batch:
                     self._process_and_clear_batch(batch)
 
