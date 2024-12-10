@@ -91,7 +91,6 @@ class DB:
                 self.logger.debug(f"Message queued: {full_key}")
                 return True
 
-            # Perform direct write
             with self._db_lock:
                 self._write_to_backend(full_key, value, backend)
             return True
@@ -111,6 +110,7 @@ class DB:
         :param queue: If True, writes immediately; if False, queues the write.
         :param backend: Backend to write to: 'local', 'dynamodb', or 'etcd'.
         """
+
         def decorator(func):
             @wraps(func)
             def wrapper(*args, **kwargs):
@@ -124,6 +124,7 @@ class DB:
                     raise ValueError(
                         "Function return value must be a dictionary containing a 'value' key."
                     )
+
             return wrapper
 
         return decorator
@@ -179,7 +180,11 @@ class DB:
             raise ValueError(f"Invalid backend or backend not initialized: {backend}")
 
     def list_keys(
-        self, page_size: int = 10, start_after: str = None, bucket: str = "", backend: str = "local"
+        self,
+        page_size: int = 10,
+        start_after: str = None,
+        bucket: str = "",
+        backend: str = "local",
     ):
         """
         List all keys from the specified backend with optional pagination and bucket filtering.

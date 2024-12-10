@@ -52,7 +52,7 @@ class BackendInitializer:
             self.etcd = Etcd3Client(
                 host=etcd_cfg["host"],
                 port=etcd_cfg["port"],
-                timeout=etcd_cfg.get("timeout", 5)
+                timeout=etcd_cfg.get("timeout", 5),
             )
             self.logger.debug("etcd backend initialized.")
         except Exception as e:
