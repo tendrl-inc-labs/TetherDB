@@ -3,42 +3,43 @@
 </div>
 <br>
 
-# A Hybrid Key-Value Store for Local, DynamoDB, and etcd Backends
+# TetherDB - A Hybrid Key-Value Store for Local, DynamoDB, and etcd Backends
 
-## TetherDB is a flexible key-value store supporting
-
-1. **Local storage** using `dbm` (SQLite3-backed in Python 3.13+).
-2. **AWS DynamoDB** for scalable cloud storage.
-3. **etcd** for distributed key-value storage with authentication and TLS support.
+TetherDB is a flexible key-value store supporting **local storage**, **AWS DynamoDB**, and **etcd** backends. It simplifies data storage, batch processing, and retrieval with features like queued writes, bucketed organization, and key listing with pagination.
 
 ---
 
-## Key Features
+## **Key Features**
 
-- **Hybrid Storage**: Supports `local`, `DynamoDB`, or `etcd` backends.
-- **Direct Writes or Queued Writes**:
-  - Direct writes for immediate storage.
-  - Queued writes for efficient batch processing in the background.
-- **Batch Processing**: Configurable batch size and processing interval for queued writes.
-- **Flexible Configuration**:
-  - Pass a configuration file (`config_file`) **or** a configuration dictionary (`config`).
-  - Clear error handling ensures only one configuration method is used.
+- **Hybrid Storage**:
+  - Local storage (`dbm`).
+  - AWS DynamoDB for scalable cloud storage.
+  - etcd for distributed key-value management.
+
+- **Direct and Queued Writes**:
+  - Direct writes save immediately.
+  - Queued writes optimize for batch processing with configurable batch size and interval.
+
+- **Batch Processing**:
+  - Configurable batch size and processing interval ensure efficient queued writes.
+
 - **Key Listing**:
-  - Retrieve keys from any backend with optional pagination and bucket filtering.
-- **Logging Configuration**:
-  - Control logging levels (`debug`, `info`, `none`) directly via `config`.
-- **Lifecycle Management**:
-  - **`start()`**: Start background workers for queued writes.
-  - **`stop()`**: Gracefully stop the background worker.
-- **Buckets**: Organize keys logically using prefixes.
-- **`tether` Decorator**: Automatically write function outputs to the database.
-- **JSON Configuration**: Simplify backend setup and logging controls.
+  - Retrieve and paginate keys with optional prefix-based filtering.
+
+- **`tether` Decorator**:
+  - Simplify function integration by writing return values automatically to the database.
+
+- **Thread-Safe Design**:
+  - Queued writes and batch processing are thread-safe, ensuring concurrency.
+
+- **Easy Configuration**:
+  - Pass configuration as a JSON file or Python dictionary.
 
 ---
 
-## Installation
+## **Installation**
 
-### Prerequisites
+### **Prerequisites**
 
 - **Python 3.13+** (for SQLite3-backed `dbm`).
 - **`boto3`**: For AWS DynamoDB integration.
@@ -52,56 +53,11 @@ pip install boto3 etcd3gw
 
 ---
 
-### DynamoDB Table Setup
+## **Configuration**
 
-To use the DynamoDB backend, you must create a DynamoDB table with the following requirements:
+TetherDB can be configured using either a **JSON file** or a **Python dictionary**.
 
-1. **Table Name**: Must match the `table_name` provided in the `config` or `config_file`.
-
-2. **Primary Key**:
-   - **Partition Key**: Use a string attribute named `key`.
-   - **No Sort Key** is required.
-
-3. **Example AWS CLI Command to Create the Table**:
-
-```bash
-aws dynamodb create-table \
-    --table-name MyDynamoDBTable \
-    --attribute-definitions AttributeName=key,AttributeType=S \
-    --key-schema AttributeName=key,KeyType=HASH \
-    --billing-mode PAY_PER_REQUEST
-```
-
----
-
-## DynamoDB Configuration in `config.json`
-
-```json
-{
-  "dynamodb": {
-    "table_name": "MyDynamoDBTable"
-  }
-}
-```
-
-Ensure the table exists and matches the configuration. If the table does not exist, DynamoDB operations will fail.
-
----
-
-## Configuration
-
-TetherDB supports configuration in two ways:
-
-1. **Using a JSON file (`config_file`)**.
-2. **Passing a Python dictionary (`config`)**.
-
-> **Note**: You must provide **one**, not both. TetherDB will raise an error if both are passed.
-
----
-
-### Example 1: JSON Configuration File (`config.json`)
-
-Create a `config.json` file to specify backend settings and logging levels.
+### **Example `config.json`**
 
 ```json
 {
@@ -119,8 +75,6 @@ Create a `config.json` file to specify backend settings and logging levels.
   "etcd": {
     "host": "localhost",
     "port": 2379,
-    "username": "user",
-    "password": "password",
     "use_ssl": true,
     "cert_file": "cert.pem",
     "key_file": "key.pem",
@@ -130,21 +84,9 @@ Create a `config.json` file to specify backend settings and logging levels.
 }
 ```
 
-**Usage**:
+### **Python Configuration Dictionary**
 
 ```python
-from TetherDB import DB
-
-db = DB(config_file="config.json")
-```
-
----
-
-### Example 2: Python Configuration Dictionary (`config`)
-
-```python
-from TetherDB import DB
-
 config = {
     "logging": "debug",
     "queue_batch": {"size": 10, "interval": 2.0},
@@ -160,15 +102,31 @@ config = {
         "timeout": 5
     }
 }
+```
 
+---
+
+## **Usage**
+
+### **Initialize TetherDB**
+
+You can initialize the database by passing either a config file or a config dictionary.
+
+```python
+from TetherDB import DB
+
+# Initialize with a config file
+db = DB(config_file="config.json")
+
+# Initialize with a Python dictionary
 db = DB(config=config)
 ```
 
 ---
 
-## Methods Overview
+### **Methods**
 
-### 1. **`write_message`**
+#### 1. **`write_message`**
 
 Write a key-value pair **immediately** or **queue** it for background processing.
 
@@ -177,35 +135,45 @@ db.write_message("key1", {"name": "Alice"}, backend="local")
 db.write_message("key2", "simple_value", backend="etcd", queue=True)
 ```
 
-| Parameter  | Type         | Description                                        |
-|------------|--------------|----------------------------------------------------|
-| `key`      | `str`        | Key for the data.                                  |
-| `value`    | `dict`/`str` | Data to store. If `dict`, it is JSON-encoded.      |
-| `bucket`   | `str`        | Optional bucket prefix for logical grouping.       |
-| `backend`  | `str`        | Backend to use: `local`, `dynamodb`, or `etcd`.    |
-| `queue`    | `bool`       | Queue for background write (default: `False`).     |
+**Parameters**:
+
+| Parameter   | Type         | Description                                       |
+|-------------|--------------|---------------------------------------------------|
+| `key`       | `str`        | Key for the data.                                 |
+| `value`     | `dict`/`str` | Data to store. If `dict`, it is JSON-encoded.     |
+| `bucket`    | `str`        | Optional bucket prefix for logical grouping.      |
+| `backend`   | `str`        | Backend to use: `local`, `dynamodb`, or `etcd`.   |
+| `queue`     | `bool`       | Queue for background write (default: `False`).    |
 
 ---
 
-### 2. **`list_keys`**
+#### 2. **`list_keys`**
 
-List keys stored in a backend with optional pagination.
+List keys stored in a backend with optional pagination and prefix-based filtering.
 
 ```python
 result = db.list_keys(page_size=5, backend="local")
-print(result)
+print(result)  # {"keys": [...], "next_marker": ...}
 ```
 
+**Parameters**:
+
 | Parameter      | Type     | Description                                        |
-|----------------|----------|----------------------------------------------------|
+|-----------------|----------|----------------------------------------------------|
 | `bucket`       | `str`    | Optional bucket prefix for filtering keys.         |
 | `page_size`    | `int`    | Maximum number of keys per page.                   |
 | `start_after`  | `str`    | Start listing keys after this key.                 |
 | `backend`      | `str`    | Backend to list keys from: `local`, `dynamodb`, `etcd`. |
 
+**Returns**:
+
+```json
+{"keys": ["key1", "key2"], "next_marker": "key2"}
+```
+
 ---
 
-### 3. **`start`** and **`stop`**
+#### 3. **`start`** and **`stop`**
 
 Control the background worker for queued writes.
 
@@ -216,17 +184,17 @@ db.stop()   # Gracefully stop the worker
 
 ---
 
-### 4. **`tether` Decorator**
+#### 4. **`tether` Decorator**
 
-Write the **return value** of a function to the database.
+The `tether` decorator allows you to automatically write the return value of a function to the database.
 
-#### Requirements
+##### **Function Requirements**
 
-- Function must return a dictionary with:
-  - `"key"`: (Optional) Custom key. Defaults to a UUID if not provided.
-  - `"value"`: The data to store (str or dict).
+- The function **must return** a dictionary containing:
+  - **`key`**: (Optional) Custom key for the data. Defaults to a UUID.
+  - **`value`**: The data to store, which can be a `dict` or a `str`.
 
-**Example**:
+##### **Example Usage**
 
 ```python
 @db.tether(bucket="users", backend="local", queue=True)
@@ -238,27 +206,27 @@ generate_user()
 
 ---
 
-## Debug Mode
+## **Debugging and Logging**
 
-Enable `debug` logging in the configuration:
+Enable debug logging to monitor queued writes, batch processing, and errors. Set the logging level in the configuration:
 
 ```json
 "logging": "debug"
 ```
 
-Sample Debug Output:
+Sample debug output:
 
 ```
-2024-06-01 10:00:00 - DEBUG - Message queued for write: queued_key -> queued_write
-2024-06-01 10:00:01 - DEBUG - Batch write to etcd: queued_key -> queued_write
-2024-06-01 10:00:02 - DEBUG - Background worker shutting down.
+2024-06-01 10:00:00 - DEBUG - Message queued: queued_key -> queued_write
+2024-06-01 10:00:01 - DEBUG - Written to Local: queued_key
+2024-06-01 10:00:02 - DEBUG - Background worker stopped.
 ```
 
 ---
 
-## Cleanup and Shutdown
+## **Lifecycle Management**
 
-Always stop the background worker to ensure no pending writes are lost:
+To ensure all queued writes are processed before shutting down:
 
 ```python
 db.stop()
@@ -266,12 +234,36 @@ db.stop()
 
 ---
 
-## Closing Thoughts
+## **Real-World Example**
 
-TetherDB offers:
+```python
+from TetherDB import DB
 
-- **Direct Writes** for simplicity.
-- **Queued Writes** for efficient batching.
-- **Tether Decorator** for seamless function integration.
+# Initialize the DB
+db = DB(config_file="config.json")
 
-Easily configure your preferred backend, enable logging, and enjoy the flexibility of hybrid storage!
+# Direct write to Local backend
+db.write_message("direct_key", {"message": "Hello World!"}, backend="local")
+
+# Queued write to etcd backend
+db.write_message("queued_key", "Queued Data", backend="etcd", queue=True)
+
+# Use tether decorator
+@db.tether(bucket="logs", backend="dynamodb", queue=False)
+def generate_log():
+    return {"key": "log:001", "value": {"event": "UserLogin", "status": "Success"}}
+
+generate_log()
+
+# List keys
+print(db.list_keys(page_size=10, backend="local"))
+
+# Stop worker
+db.stop()
+```
+
+---
+
+## **Conclusion**
+
+TetherDB is a flexible, lightweight, and hybrid key-value store that adapts to various storage backends. Whether you need local, cloud-based, or distributed storage, TetherDB provides a seamless and efficient solution with robust features like batch processing, prefix-based keys, and automated decorators.

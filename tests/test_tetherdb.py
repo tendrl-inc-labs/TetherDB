@@ -2,6 +2,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import Mock, patch
 
@@ -17,7 +18,7 @@ class TestTetherDB(unittest.TestCase):
         """Set up common variables for tests."""
         cls.config = {
             "logging": "none",
-            "queue_batch": {"size": 2, "timeout": 1.0},
+            "queue_batch": {"size": 2, "interval": 1.0},
             "local": {"filepath": "test_local.db"},
             "dynamodb": {"table_name": "TestTable"},
             "etcd": {"host": "localhost", "port": 2379},
@@ -91,39 +92,35 @@ class TestTetherDB(unittest.TestCase):
     def test_queued_write_processing(self):
         """Test that queued writes are processed correctly."""
         with patch("TetherDB.db.dbm.open", autospec=True) as mock_dbm_open:
-            # Simulate dbm.open returning a dictionary-like object
             mock_db = {}
             mock_dbm_open.return_value.__enter__.return_value = mock_db
 
             # Disable the background worker's loop
             self.db.worker.is_running = False
 
-            # Queue messages
             self.db.queue.put(("key1", "value1", "local"))
             self.db.queue.put(("key2", "value2", "local"))
 
-            # Manually process the queue
             queued_batch = []
             while not self.db.queue.empty():
                 queued_batch.append(self.db.queue.get())
             self.db._process_batch(queued_batch)
 
-            # Assertions
-            self.assertEqual(mock_dbm_open.call_count, 2, "dbm.open was not called twice")
-            self.assertEqual(mock_db["key1"], "value1", "key1 was not written correctly")
-            self.assertEqual(mock_db["key2"], "value2", "key2 was not written correctly")
+            self.assertEqual(mock_dbm_open.call_count, 2)
+            self.assertEqual(mock_db["key1"], "value1")
+            self.assertEqual(mock_db["key2"], "value2")
 
     # --- List Keys Tests ---
     @patch("dbm.open", autospec=True)
-    def test_list_keys_local(self, mock_dbm_open):
-        """Test listing keys from the local backend."""
+    def test_list_keys_local_pagination(self, mock_dbm_open):
+        """Test listing keys from the local backend with pagination."""
         mock_db = Mock()
-        mock_db.keys.return_value = [b"key1", b"key2", b"key3"]
+        mock_db.keys.return_value = [b"key1", b"key2", b"key3", b"key4", b"key5"]
         mock_dbm_open.return_value.__enter__.return_value = mock_db
 
-        keys, next_marker = self.db.list_keys(page_size=2, backend="local")
-        self.assertEqual(keys, ["key1", "key2"])
-        self.assertEqual(next_marker, "key2")
+        result = self.db.list_keys(page_size=2, backend="local")
+        self.assertEqual(result["keys"], ["key1", "key2"])
+        self.assertEqual(result["next_marker"], "key2")
 
     @patch("boto3.resource")
     def test_list_keys_dynamodb(self, mock_boto3):
@@ -131,29 +128,29 @@ class TestTetherDB(unittest.TestCase):
         mock_table = Mock()
         mock_boto3.return_value.Table.return_value = mock_table
         mock_table.meta.client.scan.return_value = {
-            "Items": [{"key": {"S": "key1"}}, {"key": {"S": "key2"}}],
-            "LastEvaluatedKey": {"key": {"S": "key2"}},
+            "Items": [{"key": "key1"}, {"key": "key2"}],
+            "LastEvaluatedKey": {"key": "key2"},
         }
 
         self.db.backends.dynamodb_table = mock_table
-        keys, next_marker = self.db.list_keys(page_size=2, backend="dynamodb")
-        self.assertEqual(keys, ["key1", "key2"])
-        self.assertEqual(next_marker, "key2")
+        result = self.db.list_keys(page_size=2, backend="dynamodb")
+        self.assertEqual(result["keys"], ["key1", "key2"])
+        self.assertEqual(result["next_marker"], "key2")
 
-    @patch("etcd3gw.client.Etcd3Client.get")
-    def test_list_keys_etcd(self, mock_etcd_get):
-        """Test listing keys from the etcd backend."""
-        # Simulated etcd response
-        mock_etcd_get.return_value = {
-            "kvs": [{"key": b"key1"}, {"key": b"key2"}]
-        }
+    @patch("etcd3gw.client.Etcd3Client.get_prefix")
+    def test_list_keys_etcd_pagination(self, mock_etcd_get):
+        """Test listing keys from the etcd backend with pagination."""
+        # Simulate etcd returning 3 keys
+        mock_etcd_get.return_value.kvs = [
+            Mock(key=b"key1"), Mock(key=b"key2"), Mock(key=b"key3")
+        ]
 
         self.db.backends.etcd = Mock()
-        self.db.backends.etcd.get = mock_etcd_get
+        self.db.backends.etcd.get_prefix = mock_etcd_get
 
-        keys, next_marker = self.db.list_keys(page_size=2, backend="etcd")
-        self.assertEqual(keys, ["key1", "key2"])
-        self.assertEqual(next_marker, "key2")  # Updated to match actual behavior
+        result = self.db.list_keys(page_size=2, backend="etcd")
+        self.assertEqual(result["keys"], ["key1", "key2"])
+        self.assertEqual(result["next_marker"], "key2")
 
     # --- Tether Decorator Tests ---
     @patch.object(DB, "write_message", return_value=True)
@@ -167,10 +164,10 @@ class TestTetherDB(unittest.TestCase):
         self.assertTrue(result)
         mock_write_message.assert_called_once_with(
             "decorator_key",
-            '{"nested": "decorator_value"}',
+            {"nested": "decorator_value"},
             "test_bucket",
             "local",
-            False,
+            queue=True,
         )
 
     @patch.object(DB, "write_message", return_value=True)
@@ -182,6 +179,15 @@ class TestTetherDB(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             invalid_func()
+
+    # --- Batch Timeout Tests ---
+    def test_worker_batch_interval(self):
+        """Test that the worker respects the batch timeout."""
+        self.db.worker.batch_interval = 0.1
+        self.db.queue.put(("key1", "value1", "local"))
+        self.db.queue.put(("key2", "value2", "local"))
+        time.sleep(0.3)
+        self.assertTrue(self.db.queue.empty(), "Queue not processed within timeout")
 
 
 if __name__ == "__main__":

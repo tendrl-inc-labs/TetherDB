@@ -193,7 +193,7 @@ class DB:
         :param start_after: Start listing keys after this key (pagination marker).
         :param bucket: Optional bucket prefix for filtering keys.
         :param backend: Backend to list keys from ('local', 'dynamodb', 'etcd').
-        :return: A tuple (list of keys, next_marker).
+        :return: A dictionary {"keys": list of keys, "next_marker": next key for pagination}.
         """
         self._validate_backend(backend)
 
@@ -212,7 +212,8 @@ class DB:
             all_keys = sorted(k.decode("utf-8") for k in index_db.keys())
             if bucket:
                 all_keys = [k for k in all_keys if k.startswith(build_key(bucket, ""))]
-        return paginate_keys(all_keys, page_size, start_after)
+        keys, next_marker = paginate_keys(all_keys, page_size, start_after)
+        return {"keys": keys, "next_marker": next_marker}
 
     def _list_dynamodb_keys(self, page_size, start_after, bucket):
         """List keys from DynamoDB."""
@@ -227,33 +228,35 @@ class DB:
             scan_args["ExclusiveStartKey"] = {"key": start_after}
 
         response = self.backends.dynamodb_table.meta.client.scan(**scan_args)
-
         keys = [item["key"] for item in response.get("Items", [])]
 
         if bucket:
             keys = [k for k in keys if k.startswith(build_key(bucket, ""))]
 
         next_marker = response.get("LastEvaluatedKey", {}).get("key")
-
         return {"keys": keys, "next_marker": next_marker}
 
     def _list_etcd_keys(self, page_size, start_after, bucket):
         """
         List keys from etcd backend.
-
-        :param page_size: Number of keys to fetch.
-        :param start_after: Key to start after (pagination).
-        :param bucket: Bucket prefix for filtering keys.
-        :return: A tuple (keys, next_marker).
         """
-        prefix = bucket if bucket else ""
-
         try:
-            response = self.backends.etcd.get_prefix(prefix, limit=page_size)
-            keys = [kv.key.decode("utf-8") for kv in response.kvs]
+            key_prefix = bucket if bucket else ""
+            if start_after:
+                key_prefix += start_after + "\0"  # Lexicographical continuation
 
-            return paginate_keys(keys, page_size, start_after)
+            response = self.backends.etcd.get_prefix(
+                key_prefix, sort_order=None, sort_target=None
+            )
+
+            # Extract keys and enforce page_size
+            keys = [kv.key.decode("utf-8") for kv in response.kvs]
+            keys = keys[:page_size]  # Truncate to the requested page size
+
+            # Determine next_marker for pagination
+            next_marker = keys[-1] if len(keys) == page_size else None
+            return {"keys": keys, "next_marker": next_marker}
 
         except Exception as e:
             self.logger.error(f"Error listing etcd keys: {e}")
-            return [], None
+            return {"keys": [], "next_marker": None}
