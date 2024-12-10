@@ -19,7 +19,7 @@
 - **Direct Writes or Queued Writes**:
   - Direct writes for immediate storage.
   - Queued writes for efficient batch processing in the background.
-- **Batch Processing**: Configurable batch size and timeouts for queued writes.
+- **Batch Processing**: Configurable batch size and processing interval for queued writes.
 - **Flexible Configuration**:
   - Pass a configuration file (`config_file`) **or** a configuration dictionary (`config`).
   - Clear error handling ensures only one configuration method is used.
@@ -108,7 +108,7 @@ Create a `config.json` file to specify backend settings and logging levels.
   "logging": "debug",
   "queue_batch": {
     "size": 10,
-    "timeout": 2.0
+    "interval": 2.0
   },
   "local": {
     "filepath": "localdb"
@@ -147,14 +147,12 @@ from TetherDB import DB
 
 config = {
     "logging": "debug",
-    "queue_batch": {"size": 10, "timeout": 2.0},
+    "queue_batch": {"size": 10, "interval": 2.0},
     "local": {"filepath": "localdb"},
     "dynamodb": {"table_name": "MyDynamoDBTable"},
     "etcd": {
         "host": "localhost",
         "port": 2379,
-        "username": "user",
-        "password": "password",
         "use_ssl": True,
         "cert_file": "cert.pem",
         "key_file": "key.pem",

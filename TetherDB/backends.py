@@ -1,5 +1,4 @@
 from logging import Logger
-import ssl
 
 import boto3
 from etcd3gw.client import Etcd3Client
@@ -41,19 +40,34 @@ class BackendInitializer:
     def _init_etcd(self, config: dict):
         try:
             etcd_cfg = config.get("etcd", {})
-            # TODO Fix this https://docs.openstack.org/etcd3gw/latest/_modules/etcd3gw/client.html#Etcd3Client
-            if etcd_cfg.get("use_ssl"):
-                ssl_context = ssl.create_default_context(
-                    cafile=etcd_cfg.get("ca_cert_file")
+            host = etcd_cfg.get("host", "localhost")
+            port = etcd_cfg.get("port", 2379)
+            timeout = etcd_cfg.get("timeout", 5)
+
+            # SSL parameters
+            use_ssl = etcd_cfg.get("use_ssl", False)
+            ca_cert = etcd_cfg.get("ca_cert_file")
+            cert_file = etcd_cfg.get("cert_file")
+            key_file = etcd_cfg.get("key_file")
+
+            # Initialize etcd client
+            if use_ssl:
+                self.etcd = Etcd3Client(
+                    host=host,
+                    port=port,
+                    protocol="https",
+                    ca_cert=ca_cert,
+                    cert_cert=cert_file,
+                    cert_key=key_file,
+                    timeout=timeout,
                 )
-                ssl_context.load_cert_chain(
-                    certfile=etcd_cfg.get("cert_file"), keyfile=etcd_cfg.get("key_file")
+            else:
+                self.etcd = Etcd3Client(
+                    host=host,
+                    port=port,
+                    timeout=timeout,
                 )
-            self.etcd = Etcd3Client(
-                host=etcd_cfg["host"],
-                port=etcd_cfg["port"],
-                timeout=etcd_cfg.get("timeout", 5),
-            )
+
             self.logger.debug("etcd backend initialized.")
         except Exception as e:
             self.logger.error(f"Error initializing etcd backend: {e}")
