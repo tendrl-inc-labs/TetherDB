@@ -213,6 +213,44 @@ print(value)  # Output: {"name": "Alice"}
 
 ---
 
+#### **`list_messages`**
+
+Retrieve a list of messages (values) from the specified backend with optional pagination and bucket-based filtering.
+
+```python
+result = db.list_messages(page_size=2, start_after="key1", backend="local")
+print(result)
+# Output: {'messages': ['value1', 'value2'], 'next_marker': 'key2'}
+```
+
+**Parameters**:
+
+| Parameter      | Type     | Description                                        |
+|----------------|----------|----------------------------------------------------|
+| `page_size`    | `int`    | Maximum number of messages to return.              |
+| `start_after`  | `str`    | Start listing messages after this key.             |
+| `bucket`       | `str`    | Optional bucket prefix for filtering.              |
+| `backend`      | `str`    | Backend to list messages from (`local`, `dynamodb`, `etcd`). |
+
+**Returns**:
+
+- **`dict`**: A dictionary containing:
+  - **`messages`**: List of message values (as JSON-encoded strings or raw strings).
+  - **`next_marker`**: Key to use for paginating the next set of results.
+
+```python
+# List first two messages
+result = db.list_messages(page_size=2, backend="local")
+print(result)
+# {'messages': ['{"data": "value1"}', '{"data": "value2"}'], 'next_marker': 'key2'}
+
+# Paginate to the next set of results
+result = db.list_messages(page_size=2, start_after=result['next_marker'], backend="local")
+print(result)
+```
+
+---
+
 #### **`tether`** Decorator
 
 Automatically write a function's return value to the database. The function's return value **must** be a dictionary containing:
