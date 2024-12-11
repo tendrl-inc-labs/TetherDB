@@ -153,13 +153,14 @@ class DB:
 
         return {"messages": messages, "next_marker": keys_result["next_marker"]}
 
+
     def tether(self, bucket="", queue=False, backend="local"):
         """
         Decorator to write the return value of a function to the database.
 
         The function must return a dictionary containing:
         - "key": Optional custom key (a UUID will be generated if not provided).
-        - "value": The data to store.
+        - "value": The data to store (must be a dict or string).
 
         :param bucket: Optional bucket prefix.
         :param queue: If True, the write is queued for background processing.
@@ -171,14 +172,21 @@ class DB:
             @wraps(func)
             def wrapper(*args, **kwargs):
                 result = func(*args, **kwargs)
-                if isinstance(result, dict) and "value" in result:
-                    key = result.get("key", str(uuid.uuid4()))
-                    value = result["value"]
-                    self.write_message(key, value, bucket, backend, queue)
-                    return True
-                raise ValueError(
-                    "Function return value must be a dictionary containing 'value'."
-                )
+
+                if not isinstance(result, dict) or "value" not in result:
+                    raise ValueError(
+                        "Function return value must be a dictionary containing 'value'."
+                    )
+
+                value = result["value"]
+                if not isinstance(value, (dict, str)):
+                    raise ValueError(
+                        f"The 'value' field must be a dict or string, got {type(value).__name__}."
+                    )
+
+                key = result.get("key", str(uuid.uuid4()))
+                self.write_message(key, value, bucket, backend, queue)
+                return True
 
             return wrapper
 

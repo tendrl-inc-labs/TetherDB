@@ -146,6 +146,26 @@ class TestTetherDB(unittest.TestCase):
         value = db.read_message("tether_key", "test_bucket", "local")
         self.assertEqual(value, "tether_value")
         db.stop()
+    
+    def test_tether_decorator_invalid_value(self):
+        """
+        Test the tether decorator raises an error when the 'value' is not a dict or string.
+        """
+        db = DB(config=self.config)
+
+        # Function that returns an invalid 'value' type (e.g., an integer)
+        @db.tether(bucket="test_bucket", backend="local")
+        def invalid_function():
+            return {"key": "invalid_key", "value": 123}  # Invalid 'value' type
+
+        with self.assertRaises(ValueError) as context:
+            invalid_function()
+        
+        self.assertIn(
+            "The 'value' field must be a dict or string",
+            str(context.exception),
+            "Expected ValueError for invalid 'value' type."
+        )
 
 
 if __name__ == "__main__":

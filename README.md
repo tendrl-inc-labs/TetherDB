@@ -193,7 +193,16 @@ print(value)  # Output: {"name": "Alice"}
 
 #### **`tether`** Decorator
 
-Automatically write a function's return value to the database.
+Automatically write a function's return value to the database. The function's return value **must** be a dictionary containing:
+
+- `key`: The key for storing the value (optional; a UUID will be generated if omitted).
+- `value`: The data to store, which **must** be either a `dict` or a `string`.
+
+If `value` is not a dictionary or string, a `ValueError` will be raised.
+
+---
+
+**Example Usage**:
 
 ```python
 @db.tether(bucket="logs", backend="local", queue=True)
