@@ -8,6 +8,9 @@ sys.path.append(os.path.abspath(".."))
 
 from TetherDB.db import DB
 
+class MockEtcdResponse:
+    def __init__(self, value):
+        self.value = value
 
 class TestTetherDB(unittest.TestCase):
     @classmethod
@@ -55,25 +58,34 @@ class TestTetherDB(unittest.TestCase):
         value = self.db.read_message("key1", backend="dynamodb")
         self.assertEqual(value, "value1")
 
+
     @patch("etcd3gw.client.Etcd3Client.get")
     def test_read_message_etcd(self, mock_etcd_get):
         """Test reading a message from the etcd backend."""
-        mock_etcd_get.return_value = Mock(kvs=[Mock(value=b"value1")])
+        # Simulate etcd.get response as bytes
+        class MockEtcdResponse:
+            def __init__(self, value):
+                self.value = value
 
-        self.db.backends.etcd = Mock()
-        self.db.backends.etcd.get = mock_etcd_get
+        # Create a proper mock response with bytes
+        mock_response = MockEtcdResponse(b'{"data": "value1"}')
+        mock_etcd_get.return_value = iter([mock_response.value])  # Directly return bytes
 
+        # Call the method
         value = self.db.read_message("key1", backend="etcd")
-        self.assertEqual(value, "value1")
 
-    # --- Update Message Tests ---
-    def test_update_message_local(self):
-        """Test updating a message in the local backend."""
-        self.db.write_message("key1", "initial", backend="local")
-        self.assertTrue(self.db.update_message("key1", "updated", backend="local"))
+        # Assertions
+        self.assertEqual(value, {"data": "value1"}, "The returned value does not match.")
+        mock_etcd_get.assert_called_once_with("key1")
 
-        updated_value = self.db.read_message("key1", backend="local")
-        self.assertEqual(updated_value, "updated")
+        # --- Update Message Tests ---
+        def test_update_message_local(self):
+            """Test updating a message in the local backend."""
+            self.db.write_message("key1", "initial", backend="local")
+            self.assertTrue(self.db.update_message("key1", "updated", backend="local"))
+
+            updated_value = self.db.read_message("key1", backend="local")
+            self.assertEqual(updated_value, "updated")
 
     @patch("boto3.resource")
     def test_update_message_dynamodb(self, mock_boto3):
@@ -86,18 +98,28 @@ class TestTetherDB(unittest.TestCase):
         result = self.db.update_message("key1", "updated", backend="dynamodb")
         self.assertTrue(result)
 
-    @patch("etcd3gw.client.Etcd3Client.put")
     @patch("etcd3gw.client.Etcd3Client.get")
-    def test_update_message_etcd(self, mock_etcd_get, mock_etcd_put):
+    @patch("etcd3gw.client.Etcd3Client.put")
+    def test_update_message_etcd(self, mock_etcd_put, mock_etcd_get):
         """Test updating a message in the etcd backend."""
-        mock_etcd_get.return_value = Mock(kvs=[Mock(value=b"initial")])
-        self.db.backends.etcd = Mock()
-        self.db.backends.etcd.get = mock_etcd_get
-        self.db.backends.etcd.put = mock_etcd_put
+        # Simulate etcd.get response as bytes
+        class MockEtcdResponse:
+            def __init__(self, value):
+                self.value = value
 
-        result = self.db.update_message("key1", "updated", backend="etcd")
-        self.assertTrue(result)
-        mock_etcd_put.assert_called_once_with("key1", "updated")
+        mock_response = MockEtcdResponse(b'{"data": "initial_value"}')
+        mock_etcd_get.return_value = iter([mock_response.value])  # Return bytes
+
+        # Mock etcd.put to simulate successful update
+        mock_etcd_put.return_value = True
+
+        # Call the method
+        result = self.db.update_message("key1", {"data": "updated_value"}, backend="etcd")
+
+        # Assertions
+        self.assertTrue(result, "Update should return True for a successful update.")
+        mock_etcd_get.assert_called_once_with("key1")
+        mock_etcd_put.assert_called_once_with("key1", '{"data": "updated_value"}')
 
     # --- List Messages Tests ---
     def test_list_messages_local(self):
