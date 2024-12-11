@@ -36,6 +36,9 @@ TetherDB is a flexible key-value store supporting **local storage**, **AWS Dynam
 - **Concurrent Writes**:
   - Simulate concurrent writes and stress-test backend performance.
 
+- **Context Manager Support**:
+  - `DB` can be used directly or within a `with` statement for automatic resource management.
+
 - **Easy Configuration**:
   - Pass configuration as a JSON file or Python dictionary.
 
@@ -114,16 +117,30 @@ config = {
 
 ### **Initialize TetherDB**
 
-You can initialize the database by passing either a config file or a config dictionary.
+You can initialize the database directly or use a context manager for automatic resource cleanup.
 
 ```python
 from TetherDB import DB
 
-# Initialize with a config file
+# Option 1: Direct Initialization
 db = DB(config_file="config.json")
+db.start()
 
-# Initialize with a Python dictionary
-db = DB(config=config)
+# Option 2: Using a Context Manager
+with DB(config_file="config.json") as db:
+    db.write_message("key1", {"data": "value1"}, backend="local")
+```
+
+---
+
+### **Worker Management**
+
+To use queued writes, ensure the worker is explicitly started:
+
+```python
+db.start()  # Start the worker
+db.write_message("key1", {"data": "queued_value"}, backend="local", queue=True)
+db.stop()   # Stop the worker to ensure pending writes are processed
 ```
 
 ---
@@ -156,24 +173,10 @@ db.write_message("key2", "simple_value", backend="etcd", queue=True)
 Update an existing key-value pair. If the key does not exist, the update will fail.
 
 ```python
-# Successful update
 db.write_message("existing_key", {"data": "value"}, backend="local")
 success = db.update_message("existing_key", {"data": "updated_value"}, backend="local")
 print(success)  # True
 ```
-
-**Parameters**:
-
-| Parameter   | Type         | Description                                       |
-|-------------|--------------|---------------------------------------------------|
-| `key`       | `str`        | Key to update.                                    |
-| `value`     | `dict`/`str` | New value to update. If `dict`, JSON-encoded.     |
-| `bucket`    | `str`        | Optional bucket prefix for logical grouping.      |
-| `backend`   | `str`        | Backend to use: `local`, `dynamodb`, or `etcd`.   |
-
-**Returns**:
-
-- `bool`: `True` if the update succeeds, `False` otherwise.
 
 ---
 
@@ -186,47 +189,20 @@ value = db.read_message("key1", backend="local")
 print(value)  # Output: {"name": "Alice"}
 ```
 
-**Parameters**:
-
-| Parameter  | Type   | Description                                  |
-|------------|--------|----------------------------------------------|
-| `key`      | `str`  | Key of the data to retrieve.                 |
-| `bucket`   | `str`  | Optional bucket prefix for logical grouping. |
-| `backend`  | `str`  | Backend to use: `local`, `dynamodb`, or `etcd`. |
-
-**Returns**:
-
-- The value stored under the specified key. If the key does not exist, it returns `None`.
-
----
-
-#### **`list_messages`**
-
-List messages with optional pagination and prefix filtering.
-
-**Parameters**:
-
-| Parameter      | Type     | Description                                        |
-|-----------------|----------|----------------------------------------------------|
-| `bucket`       | `str`    | Optional bucket prefix for filtering keys.         |
-| `page_size`    | `int`    | Maximum number of keys per page.                   |
-| `start_after`  | `str`    | Start listing keys after this key.                 |
-| `backend`      | `str`    | Backend to list keys from: `local`, `dynamodb`, `etcd`. |
-
-**Returns**:
-
-```python
-{"messages": ["value1", "value2"], "next_marker": "key2"}
-```
-
 ---
 
 #### **`tether`** Decorator
 
-The `tether` decorator simplifies function integration by automatically writing the function's return value to the database. The return value must be a dictionary containing:
+Automatically write a function's return value to the database. The function's return value **must** be a dictionary containing:
 
-- `key`: The key for storing the value (a UUID is generated if omitted).
-- `value`: The data to store.
+- `key`: The key for storing the value (optional; a UUID will be generated if omitted).
+- `value`: The data to store, which **must** be either a `dict` or a `string`.
+
+If `value` is not a dictionary or string, a `ValueError` will be raised.
+
+---
+
+**Example Usage**:
 
 ```python
 @db.tether(bucket="logs", backend="local", queue=True)
@@ -236,38 +212,19 @@ def generate_log():
 generate_log()
 ```
 
-In this example:
-
-- A log with key `log:001` is written to the `local` backend.
-- The `queue=True` argument ensures the write is processed asynchronously.
-
-**Parameters**:
-
-| Parameter   | Type    | Description                                       |
-|-------------|---------|---------------------------------------------------|
-| `bucket`    | `str`   | Optional bucket prefix for logical grouping.      |
-| `queue`     | `bool`  | If `True`, the write will be queued. Default `False`. |
-| `backend`   | `str`   | Backend to write to: `local`, `dynamodb`, or `etcd`. |
-
-**Return**:
-
-- Writes the return value of the function to the database and returns `True` on success.
-
----
-
-## **Debugging and Logging**
-
-Enable debug logging by setting `"logging": "debug"` in the config.
-
 ---
 
 ## **Lifecycle Management**
 
 ```python
+# Explicit Start/Stop
+db.start()
 db.stop()
-```
 
-Ensures pending writes are completed before shutdown.
+# Context Manager for Automatic Cleanup
+with DB(config_file="config.json") as db:
+    db.write_message("key1", {"data": "value"}, backend="local")
+```
 
 ---
 

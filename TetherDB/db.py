@@ -39,7 +39,7 @@ class DB:
         # Initialize background worker for queued writes
         self.queue = Queue()
         self.worker = BackgroundWorker(self.queue, self.backends, self.logger)
-        self.start()
+        self._worker_started = False
 
     def _load_config_from_file(self, config_file):
         """Load configuration from a JSON file."""
@@ -48,14 +48,29 @@ class DB:
 
     def start(self):
         """Start the background worker for processing queued writes."""
-        self.worker.start(
-            self.config.get("queue_batch", {}).get("size", 15),
-            self.config.get("queue_batch", {}).get("interval", 1),
-        )
+        if not self._worker_started:
+            self.worker.start(
+                self.config.get("queue_batch", {}).get("size", 15),
+                self.config.get("queue_batch", {}).get("interval", 1),
+            )
+            self._worker_started = True
+            self.logger.debug("Background worker started.")
 
     def stop(self):
         """Stop the background worker gracefully, ensuring pending writes are processed."""
-        self.worker.stop()
+        if self._worker_started:
+            self.worker.stop()
+            self._worker_started = False
+            self.logger.debug("Background worker stopped.")
+
+    def __enter__(self):
+        """Start the worker when entering the context."""
+        self.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Ensure the worker stops when exiting the context."""
+        self.stop()
 
     def write_message(self, key, value, bucket="", backend="local", queue=False):
         """
@@ -71,6 +86,11 @@ class DB:
         value = json.dumps(value) if isinstance(value, dict) else value
 
         if queue:
+            if not self.worker.is_running:
+                raise RuntimeError(
+                    "Background worker is not running. "
+                    "Start the worker before queuing messages using 'start()'."
+                )
             self.queue.put((full_key, value, backend))
             self.logger.debug(f"Message queued: {full_key}")
             return True
@@ -133,13 +153,14 @@ class DB:
 
         return {"messages": messages, "next_marker": keys_result["next_marker"]}
 
+
     def tether(self, bucket="", queue=False, backend="local"):
         """
         Decorator to write the return value of a function to the database.
 
         The function must return a dictionary containing:
         - "key": Optional custom key (a UUID will be generated if not provided).
-        - "value": The data to store.
+        - "value": The data to store (must be a dict or string).
 
         :param bucket: Optional bucket prefix.
         :param queue: If True, the write is queued for background processing.
@@ -151,14 +172,21 @@ class DB:
             @wraps(func)
             def wrapper(*args, **kwargs):
                 result = func(*args, **kwargs)
-                if isinstance(result, dict) and "value" in result:
-                    key = result.get("key", str(uuid.uuid4()))
-                    value = result["value"]
-                    self.write_message(key, value, bucket, backend, queue)
-                    return True
-                raise ValueError(
-                    "Function return value must be a dictionary containing 'value'."
-                )
+
+                if not isinstance(result, dict) or "value" not in result:
+                    raise ValueError(
+                        "Function return value must be a dictionary containing 'value'."
+                    )
+
+                value = result["value"]
+                if not isinstance(value, (dict, str)):
+                    raise ValueError(
+                        f"The 'value' field must be a dict or string, got {type(value).__name__}."
+                    )
+
+                key = result.get("key", str(uuid.uuid4()))
+                self.write_message(key, value, bucket, backend, queue)
+                return True
 
             return wrapper
 
