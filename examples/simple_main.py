@@ -49,6 +49,8 @@ def test_backend_operations(db, backend, direct_key, update_key, queued_key):
 
     # Queued Write and Verify
     print(f"Enqueuing queued write to '{backend}'...")
+    if not db.worker.is_running:  # Ensure worker is started
+        db.start()
     db.write_message(
         queued_key, {"data": f"{backend}_queued_write"}, backend=backend, queue=True
     )
@@ -60,45 +62,41 @@ def main():
     # Path to the config file
     config_file = "examples/config.json"
 
-    # Initialize the DB instance
-    db = DB(config_file=config_file)
+    # Using the context manager to handle DB setup and teardown
+    with DB(config_file=config_file) as db:
+        # ================================
+        # Local Backend
+        # ================================
+        test_backend_operations(
+            db,
+            backend="local",
+            direct_key="local_direct",
+            update_key="local_update",
+            queued_key="local_queued",
+        )
 
-    # ================================
-    # Local Backend
-    # ================================
-    test_backend_operations(
-        db,
-        backend="local",
-        direct_key="local_direct",
-        update_key="local_update",
-        queued_key="local_queued",
-    )
+        # ================================
+        # DynamoDB Backend
+        # ================================
+        test_backend_operations(
+            db,
+            backend="dynamodb",
+            direct_key="dynamo_direct",
+            update_key="dynamo_update",
+            queued_key="dynamo_queued",
+        )
 
-    # ================================
-    # DynamoDB Backend
-    # ================================
-    test_backend_operations(
-        db,
-        backend="dynamodb",
-        direct_key="dynamo_direct",
-        update_key="dynamo_update",
-        queued_key="dynamo_queued",
-    )
+        # ================================
+        # etcd Backend
+        # ================================
+        test_backend_operations(
+            db,
+            backend="etcd",
+            direct_key="etcd_direct",
+            update_key="etcd_update",
+            queued_key="etcd_queued",
+        )
 
-    # ================================
-    # etcd Backend
-    # ================================
-    test_backend_operations(
-        db,
-        backend="etcd",
-        direct_key="etcd_direct",
-        update_key="etcd_update",
-        queued_key="etcd_queued",
-    )
-
-    # Shutdown worker
-    print("\nShutting down background worker...")
-    db.stop()
     print("✔ All tests completed successfully.")
 
 

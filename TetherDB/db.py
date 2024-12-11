@@ -39,7 +39,7 @@ class DB:
         # Initialize background worker for queued writes
         self.queue = Queue()
         self.worker = BackgroundWorker(self.queue, self.backends, self.logger)
-        self.start()
+        self._worker_started = False
 
     def _load_config_from_file(self, config_file):
         """Load configuration from a JSON file."""
@@ -48,14 +48,29 @@ class DB:
 
     def start(self):
         """Start the background worker for processing queued writes."""
-        self.worker.start(
-            self.config.get("queue_batch", {}).get("size", 15),
-            self.config.get("queue_batch", {}).get("interval", 1),
-        )
+        if not self._worker_started:
+            self.worker.start(
+                self.config.get("queue_batch", {}).get("size", 15),
+                self.config.get("queue_batch", {}).get("interval", 1),
+            )
+            self._worker_started = True
+            self.logger.debug("Background worker started.")
 
     def stop(self):
         """Stop the background worker gracefully, ensuring pending writes are processed."""
-        self.worker.stop()
+        if self._worker_started:
+            self.worker.stop()
+            self._worker_started = False
+            self.logger.debug("Background worker stopped.")
+
+    def __enter__(self):
+        """Start the worker when entering the context."""
+        self.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Ensure the worker stops when exiting the context."""
+        self.stop()
 
     def write_message(self, key, value, bucket="", backend="local", queue=False):
         """
@@ -71,6 +86,11 @@ class DB:
         value = json.dumps(value) if isinstance(value, dict) else value
 
         if queue:
+            if not self.worker.is_running:
+                raise RuntimeError(
+                    "Background worker is not running. "
+                    "Start the worker before queuing messages using 'start()'."
+                )
             self.queue.put((full_key, value, backend))
             self.logger.debug(f"Message queued: {full_key}")
             return True
