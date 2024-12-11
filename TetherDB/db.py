@@ -21,6 +21,16 @@ class DB:
     - Decorate functions to tether their outputs to the database.
     """
 
+    __slots__ = [
+        "config",
+        "logger",
+        "_db_lock",
+        "backends",
+        "queue",
+        "worker",
+        "_worker_started",
+    ]
+
     def __init__(self, config: dict = None, config_file: str = None):
         """
         Initialize the TetherDB instance.
@@ -152,7 +162,6 @@ class DB:
         ]
 
         return {"messages": messages, "next_marker": keys_result["next_marker"]}
-
 
     def tether(self, bucket="", queue=False, backend="local"):
         """
