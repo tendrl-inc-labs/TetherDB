@@ -135,7 +135,7 @@ with DB(config_file="config.json") as db:
 
 ### **Worker Management**
 
-To use queued writes, ensure the worker is explicitly started:
+To use queued writes, ensure the worker is explicitly started if not using the context manager, ie 'with' statement:
 
 ```python
 db.start()  # Start the worker
